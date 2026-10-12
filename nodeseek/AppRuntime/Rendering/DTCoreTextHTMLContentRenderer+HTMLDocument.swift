@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 extension DTCoreTextHTMLContentRenderer {
     func wrapHTML(fragment: String, baseURL: URL) -> String {
@@ -82,7 +83,7 @@ extension DTCoreTextHTMLContentRenderer {
     }
 
     private func cssPixelSize(basePointSize: CGFloat) -> String {
-        let size = AppTextSizeSettings.adjustedPointSize(basePointSize: basePointSize)
+        let size = AppTypography.font(basePointSize: basePointSize).pointSize
         return "\(Int(size.rounded()))px"
     }
 }
