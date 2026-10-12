@@ -101,7 +101,7 @@ struct AppTextSizeSettingsTests {
         let post = PostSummary(id: "font-layout", title: String(repeating: "长标题自然换行 ", count: 15),
             url: URL(string: "https://www.nodeseek.com/post-1")!, authorName: "作者", nodeName: "日常",
             replyCount: 123, viewCount: 456, lastActivityText: "刚刚")
-        let range = ASSizeRange(min: CGSize(width: 390, height: 0), max: CGSize(width: 390, height: .greatestFiniteMagnitude))
+        let range = ASSizeRange(min: CGSize(width: 390, height: 0), max: CGSize(width: 390, height: CGFloat.greatestFiniteMagnitude))
         for style in [UIUserInterfaceStyle.light, .dark] {
             let traits = UITraitCollection(userInterfaceStyle: style)
             var heights: [CGFloat] = []
