@@ -382,7 +382,10 @@ struct KannaNodeSeekParser: NodeSeekParser {
             id: Self.postID(from: url) ?? title,
             title: title,
             requiredReadingLevel: requiredReadingLevel,
+            lowLevelWarningAuthorID: restrictedNotice == nil
+                ? lowLevelWarningAuthorID(in: document, bodyItem: bodyItem) : nil,
             authorName: authorName,
+            authorBadgeTexts: bodyItem.map { parseAuthorBadgeTexts(in: $0) } ?? [],
             avatarURL: avatarURL,
             authorProfileURL: authorProfileURL,
             metadataText: metadataText,
@@ -402,6 +405,26 @@ struct KannaNodeSeekParser: NodeSeekParser {
             pagination: pagination,
             isLastPage: document.at_xpath(XPathRules.postDetailNextPage) == nil
         )
+    }
+
+    private func lowLevelWarningAuthorID(in document: HTMLDocument, bodyItem: Kanna.XMLElement?) -> Int? {
+        for root in configRoots(in: document) {
+            guard let postData = root["postData"] as? [String: Any],
+                  let category = postData["category"] as? String else { continue }
+            guard category == "trade" || category == "carpool" else { return nil }
+            if let op = postData["op"] as? [String: Any],
+               let uid = intValue(in: op, keys: ["uid"]), uid > 0 {
+                return uid
+            }
+        }
+
+        guard let bodyItem,
+              let categoryPath = bodyItem.at_xpath(XPathRules.contentCategory)?["href"],
+              let categoryURL = URL(string: categoryPath, relativeTo: baseURL),
+              categoryURL.path == "/categories/trade" || categoryURL.path == "/categories/carpool",
+              let profileURL = parseUserProfileURL(in: bodyItem),
+              let uid = Int(profileURL.lastPathComponent), uid > 0 else { return nil }
+        return uid
     }
 
     private func postDetailContentHTML(bodyItem: Kanna.XMLElement?, document: HTMLDocument) -> String {

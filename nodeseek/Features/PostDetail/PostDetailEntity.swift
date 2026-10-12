@@ -25,25 +25,27 @@ struct PostDetailHeaderContent: Equatable {
     let title: String
     let requiredReadingLevel: Int?
     let authorName: String
+    let authorBadgeTexts: [String]
     let avatarURL: URL?
     let authorProfileURL: URL?
     let metadataText: String?
     let contentHTML: String
     let signatureHTML: String?
-    let likeCount: Int?
-    let isLikeClicked: Bool
-    let chickenLegCount: Int?
-    let isChickenLegClicked: Bool
-    let opposeCount: Int?
-    let isOpposeClicked: Bool
-    let favoriteCount: Int?
-    let isFavoriteCollected: Bool
-    let isFavoriteSubmitting: Bool
+    private(set) var likeCount: Int?
+    private(set) var isLikeClicked: Bool
+    private(set) var chickenLegCount: Int?
+    private(set) var isChickenLegClicked: Bool
+    private(set) var opposeCount: Int?
+    private(set) var isOpposeClicked: Bool
+    private(set) var favoriteCount: Int?
+    private(set) var isFavoriteCollected: Bool
+    private(set) var isFavoriteSubmitting: Bool
 
     nonisolated init(
         postID: String,
         title: String,
         authorName: String,
+        authorBadgeTexts: [String] = [],
         avatarURL: URL?,
         authorProfileURL: URL? = nil,
         metadataText: String?,
@@ -64,6 +66,7 @@ struct PostDetailHeaderContent: Equatable {
         self.title = title
         self.requiredReadingLevel = requiredReadingLevel
         self.authorName = authorName
+        self.authorBadgeTexts = authorBadgeTexts
         self.avatarURL = avatarURL
         self.authorProfileURL = authorProfileURL
         self.metadataText = metadataText
@@ -103,6 +106,7 @@ struct PostDetailHeaderContent: Equatable {
             postID: detail.id,
             title: detail.title,
             authorName: detail.authorName,
+            authorBadgeTexts: detail.authorBadgeTexts,
             avatarURL: detail.avatarURL,
             authorProfileURL: detail.authorProfileURL,
             metadataText: detail.metadataText,
@@ -122,117 +126,36 @@ struct PostDetailHeaderContent: Equatable {
     }
 
     func updatingFavoriteSubmitting(_ isSubmitting: Bool) -> PostDetailHeaderContent {
-        PostDetailHeaderContent(
-            postID: postID,
-            title: title,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            requiredReadingLevel: requiredReadingLevel,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isFavoriteSubmitting: isSubmitting
-        )
+        var updated = self
+        updated.isFavoriteSubmitting = isSubmitting
+        return updated
     }
 
     func updatingFavoriteReaction(count: Int?, isCollected: Bool) -> PostDetailHeaderContent {
-        PostDetailHeaderContent(
-            postID: postID,
-            title: title,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            requiredReadingLevel: requiredReadingLevel,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: count,
-            isFavoriteCollected: isCollected,
-            isFavoriteSubmitting: isFavoriteSubmitting
-        )
+        var updated = self
+        updated.favoriteCount = count
+        updated.isFavoriteCollected = isCollected
+        return updated
     }
 
     func updatingLikeReaction(count: Int?, isClicked: Bool) -> PostDetailHeaderContent {
-        PostDetailHeaderContent(
-            postID: postID,
-            title: title,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            requiredReadingLevel: requiredReadingLevel,
-            likeCount: count,
-            isLikeClicked: isClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isFavoriteSubmitting: isFavoriteSubmitting
-        )
+        var updated = self
+        updated.likeCount = count
+        updated.isLikeClicked = isClicked
+        return updated
     }
 
     func updatingChickenLegReaction(count: Int?, isClicked: Bool) -> PostDetailHeaderContent {
-        PostDetailHeaderContent(
-            postID: postID,
-            title: title,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            requiredReadingLevel: requiredReadingLevel,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: count,
-            isChickenLegClicked: isClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isFavoriteSubmitting: isFavoriteSubmitting
-        )
+        var updated = self
+        updated.chickenLegCount = count
+        updated.isChickenLegClicked = isClicked
+        return updated
     }
 
     func updatingOpposeReaction(count: Int?, isClicked: Bool) -> PostDetailHeaderContent {
-        PostDetailHeaderContent(
-            postID: postID,
-            title: title,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            requiredReadingLevel: requiredReadingLevel,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: count,
-            isOpposeClicked: isClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isFavoriteSubmitting: isFavoriteSubmitting
-        )
+        var updated = self
+        updated.opposeCount = count
+        updated.isOpposeClicked = isClicked
+        return updated
     }
 }

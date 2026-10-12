@@ -11,6 +11,72 @@ import Testing
 
 @MainActor
 struct PostDetailInteractorTests {
+    @Test(arguments: [0, 1, 2])
+    func loadsLowLevelWarningAfterBodyAndOnlyOncePerAuthor(rank: Int) async throws {
+        let loader = StubPostAuthorRankLoader(rank: rank, waitsForCompletion: true)
+        let (interactor, presenter) = Self.makeWarningInteractor(category: "carpool", loader: loader)
+        interactor.loadPostDetail()
+        for _ in 0..<100 {
+            if presenter.loadedResponse != nil, loader.requestedAuthorIDs.isEmpty == false { break }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        #expect(presenter.loadedResponse != nil)
+        #expect(presenter.authorRiskWarningEvents.isEmpty)
+        loader.completeRankLookup()
+        await waitForInteractorCallbacks()
+        #expect(presenter.authorRiskWarningEvents.last?.isVisible == (rank <= 1))
+        #expect(loader.requestedAuthorIDs == [70925])
+        interactor.loadPostDetail(page: 2)
+        await waitForInteractorCallbacks()
+        #expect(loader.requestedAuthorIDs == [70925])
+    }
+
+    @Test func ordinaryPostDoesNotQueryRank() async {
+        let loader = StubPostAuthorRankLoader(rank: 0)
+        let (interactor, presenter) = Self.makeWarningInteractor(category: "daily", loader: loader)
+        interactor.loadPostDetail()
+        await waitForInteractorCallbacks()
+        #expect(presenter.loadedResponse != nil)
+        #expect(loader.requestedAuthorIDs.isEmpty)
+        #expect(presenter.authorRiskWarningEvents.isEmpty)
+    }
+
+    @Test func unknownRankCanBeRetriedOnNextDetailLoad() async {
+        let loader = StubPostAuthorRankLoader(rank: nil)
+        let (interactor, presenter) = Self.makeWarningInteractor(category: "trade", loader: loader)
+        interactor.loadPostDetail()
+        await waitForInteractorCallbacks()
+        #expect(presenter.authorRiskWarningEvents.last?.isVisible == false)
+
+        interactor.loadPostDetail(page: 2)
+        await waitForInteractorCallbacks()
+        #expect(loader.requestedAuthorIDs == [70925, 70925])
+        #expect(presenter.errorMessage == nil)
+    }
+
+    @Test func failedRankLookupDoesNotFailDetailLoad() async throws {
+        let loader = StubPostAuthorRankLoader(rank: nil, fails: true)
+        let (interactor, presenter) = Self.makeWarningInteractor(category: "trade", loader: loader)
+        interactor.loadPostDetail()
+        try await Task.sleep(nanoseconds: 350_000_000)
+        #expect(presenter.loadedResponse != nil)
+        #expect(presenter.errorMessage == nil)
+        #expect(presenter.authorRiskWarningEvents.isEmpty)
+    }
+
+    private static func makeWarningInteractor(category: String, loader: PostAuthorRankLoading) -> (PostDetailInteractor, SpyPostDetailInteractorOutput) {
+        let config = "{\"postData\":{\"category\":\"\(category)\",\"op\":{\"uid\":70925}}}"
+        let html = "<div class='post-title'><h1>测试帖子</h1></div><script id='nodeseek-captured-config'>\(config)</script>"
+        let post = makePost()
+        let service = NodeSeekService(htmlClient: URLCapturingHTMLClient(response: HTMLResponse(
+            statusCode: 200, headers: [:], finalURL: post.url, html: html
+        )), currentAccountStore: nil)
+        let presenter = SpyPostDetailInteractorOutput()
+        let interactor = PostDetailInteractor(post: post, service: service, authorRankLoader: loader, sessionStore: NodeSeekSessionStore())
+        interactor.presenter = presenter
+        return (interactor, presenter)
+    }
+
     @Test func stopsAfterFirstChallengeAndUpdatesSharedSessionState() async throws {
         let html = try FixtureLoader.html(named: "cloudflare-challenge")
         let url = URL(string: "https://www.nodeseek.com/")!
@@ -494,6 +560,7 @@ struct PostDetailInteractorTests {
 @MainActor
 private final class SpyPostDetailInteractorOutput: PostDetailInteractorOutput {
     var loadedResponse: PostDetailResponse?
+    var authorRiskWarningEvents: [(postID: String, isVisible: Bool)] = []
     var loginRequiredMessage: String?
     var errorMessage: String?
     var didSubmitReplyCount = 0
@@ -515,6 +582,10 @@ private final class SpyPostDetailInteractorOutput: PostDetailInteractorOutput {
     var postOpposeErrorMessage: String?
     var commentOpposeResponse: CommentDislikeResponse?
     var commentOpposeErrorMessage: String?
+
+    func didLoadAuthorRiskWarning(postID: String, isVisible: Bool) {
+        authorRiskWarningEvents.append((postID, isVisible))
+    }
 
     func didLoadPostDetail(_ response: PostDetailResponse) {
         loadedResponse = response
@@ -789,5 +860,34 @@ private final class SpyPostDislikeSubmitting: PostDislikeSubmitting {
         submittedPostID = postID
         submittedReferer = referer
         return response
+    }
+}
+
+@MainActor
+private final class StubPostAuthorRankLoader: PostAuthorRankLoading {
+    let rank: Int?
+    let fails: Bool
+    let waitsForCompletion: Bool
+    private var continuation: CheckedContinuation<Int?, Error>?
+    private(set) var requestedAuthorIDs: [Int] = []
+
+    init(rank: Int?, fails: Bool = false, waitsForCompletion: Bool = false) {
+        self.rank = rank
+        self.fails = fails
+        self.waitsForCompletion = waitsForCompletion
+    }
+
+    func loadRank(authorID: Int, referer: URL) async throws -> Int? {
+        requestedAuthorIDs.append(authorID)
+        if waitsForCompletion {
+            return try await withCheckedThrowingContinuation { continuation = $0 }
+        }
+        if fails { throw URLError(.timedOut) }
+        return rank
+    }
+
+    func completeRankLookup() {
+        continuation?.resume(returning: rank)
+        continuation = nil
     }
 }

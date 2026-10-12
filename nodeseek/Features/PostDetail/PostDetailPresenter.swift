@@ -557,42 +557,16 @@ private extension PostDetail {
             pagination: pageDetail.pagination
         )
     }
-
-    func replacingComments(
-        _ nextComments: [Comment],
-        page: Int,
-        pagination: PostDetailPagination?
-    ) -> PostDetail {
-        PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isRestricted: isRestricted,
-            comments: nextComments,
-            page: page,
-            pagination: pagination,
-            isLastPage: pagination?.nextPage == nil
-        )
-    }
 }
 
 // MARK: - Interactor Output
 extension PostDetailPresenter: PostDetailInteractorOutput {
     
+    func didLoadAuthorRiskWarning(postID: String, isVisible: Bool) {
+        if let currentDetail, currentDetail.id != postID { return }
+        view?.updateAuthorRiskWarning(postID: postID, isVisible: isVisible)
+    }
+
     func didLoadPostDetail(_ response: PostDetailResponse) {
         favoriteRollbackDetail = nil
         favoriteRollbackCollectedState = nil

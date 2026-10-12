@@ -23,6 +23,7 @@ protocol PostDetailViewProtocol: AnyObject {
     func refreshCurrentCommentPage(detail: PostDetail)
     func appendCommentPage(detail: PostDetail)
     func updatePostBody(detail: PostDetail)
+    func updateAuthorRiskWarning(postID: String, isVisible: Bool)
     func updateCommentLike(commentID: String, count: Int?, isClicked: Bool)
     func updateCommentChickenLeg(commentID: String, count: Int?, isClicked: Bool)
     func updateCommentOppose(commentID: String, count: Int?, isClicked: Bool)
@@ -64,6 +65,7 @@ protocol PostDetailInteractorInput: AnyObject {
 // MARK: - Interactor Output (Interactor -> Presenter)
 protocol PostDetailInteractorOutput: AnyObject {
     func didLoadPostDetail(_ response: PostDetailResponse)
+    func didLoadAuthorRiskWarning(postID: String, isVisible: Bool)
     func didRequireLogin(message: String)
     func didFailLoadPostDetail(error: String)
     func didCancelLoadPostDetail()

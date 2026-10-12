@@ -37,6 +37,9 @@ class PostDetailInteractor: PostDetailInteractorInput {
     private let commentDislikeSubmitter: CommentDislikeSubmitting
     private let sessionStore: NodeSeekSessionStore
     private let actionPagePreparer: PostDetailActionPagePreparing
+    private let authorRankLoader: PostAuthorRankLoading
+    private var warningLookupTask: Task<Void, Never>?
+    private var warningLookupAuthorID: Int?
     private var currentActionPageURL: URL?
     private var didPrepareInitialActionPage = false
     
@@ -53,6 +56,7 @@ class PostDetailInteractor: PostDetailInteractorInput {
         postDislikeSubmitter: PostDislikeSubmitting? = nil,
         commentDislikeSubmitter: CommentDislikeSubmitting? = nil,
         actionPagePreparer: PostDetailActionPagePreparing = NoopPostDetailActionPagePreparer(),
+        authorRankLoader: PostAuthorRankLoading? = nil,
         page: Int = 1,
         sessionStore: NodeSeekSessionStore = .shared
     ) {
@@ -69,6 +73,11 @@ class PostDetailInteractor: PostDetailInteractorInput {
         self.commentDislikeSubmitter = commentDislikeSubmitter ?? NodeSeekCommentDislikeSubmitter()
         self.sessionStore = sessionStore
         self.actionPagePreparer = actionPagePreparer
+        self.authorRankLoader = authorRankLoader ?? NodeSeekAuthorRankClient()
+    }
+
+    deinit {
+        warningLookupTask?.cancel()
     }
     
     // MARK: - Methods
@@ -98,6 +107,7 @@ class PostDetailInteractor: PostDetailInteractorInput {
                 }
                 await MainActor.run {
                     presenter?.didLoadPostDetail(PostDetailResponse(detail: detail))
+                    loadAuthorRiskWarning(for: detail, referer: actionPageURL)
                 }
             } catch {
                 await MainActor.run {
@@ -109,6 +119,38 @@ class PostDetailInteractor: PostDetailInteractorInput {
                         presenter?.didFailLoadPostDetail(error: error.localizedDescription)
                     }
                 }
+            }
+        }
+    }
+
+    private func loadAuthorRiskWarning(for detail: PostDetail, referer: URL) {
+        guard let authorID = detail.lowLevelWarningAuthorID else {
+            if detail.page == 1, warningLookupAuthorID != nil {
+                warningLookupTask?.cancel()
+                warningLookupTask = nil
+                warningLookupAuthorID = nil
+                presenter?.didLoadAuthorRiskWarning(postID: detail.id, isVisible: false)
+            }
+            return
+        }
+        guard warningLookupAuthorID != authorID else { return }
+        warningLookupTask?.cancel()
+        warningLookupAuthorID = authorID
+        let loader = authorRankLoader
+        warningLookupTask = Task { [weak self] in
+            do {
+                let rank = try await loader.loadRank(authorID: authorID, referer: referer)
+                guard let self, Task.isCancelled == false else { return }
+                self.warningLookupTask = nil
+                // 未知等级不算成功查询，允许下一次详情加载时重试。
+                self.warningLookupAuthorID = rank == nil ? nil : authorID
+                self.presenter?.didLoadAuthorRiskWarning(postID: detail.id, isVisible: rank.map { $0 <= 1 } ?? false)
+            } catch {
+                guard let self, Task.isCancelled == false else { return }
+                // 等级查询是补充信息，失败不能阻塞正文或弹出阅读错误。
+                AppLog.debug(.postDetail, "楼主等级查询失败: postID=\(detail.id), \(error.localizedDescription)")
+                self.warningLookupTask = nil
+                self.warningLookupAuthorID = nil
             }
         }
     }

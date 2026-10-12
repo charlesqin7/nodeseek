@@ -140,6 +140,7 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
                 return { ASCellNode() }
             }
             let renderedContent = headerRenderedContent
+            let showsWarning = authorRiskWarningPostID == header.postID
             let imageSizeProvider = makeCurrentImageSizeProvider()
             return { [weak self] in
                 PostBodyCellNode(
@@ -179,6 +180,7 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
                         self?.presentPostBodyCopySheet(for: content)
                     },
                     showsReplyActions: self?.showsReplyEntry == true,
+                    showsAuthorRiskWarning: showsWarning,
                     onTextLayoutInvalidated: {
                         self?.scheduleAttachmentLayoutRefresh()
                     },

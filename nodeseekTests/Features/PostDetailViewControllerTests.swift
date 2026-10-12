@@ -17,6 +17,158 @@ import WebKit
 @Suite(.serialized)
 @MainActor
 struct PostDetailViewControllerTests {
+    @Test func postHeaderKeepsAuthorBadgesThroughReactionUpdates() {
+        let detail = PostDetail(
+            id: "956253", title: "标签测试", authorName: "Neutralize",
+            authorBadgeTexts: ["临时禁言", "Dev"], avatarURL: nil,
+            metadataText: "刚刚 · 交易", contentHTML: "正文", comments: []
+        )
+        let header = PostDetailHeaderContent(detail: detail)
+        let updates = [
+            header.updatingFavoriteSubmitting(true),
+            header.updatingFavoriteReaction(count: 1, isCollected: true),
+            header.updatingLikeReaction(count: 1, isClicked: true),
+            header.updatingChickenLegReaction(count: 1, isClicked: true),
+            header.updatingOpposeReaction(count: 1, isClicked: true)
+        ]
+        #expect(header.authorBadgeTexts == detail.authorBadgeTexts)
+        for update in updates {
+            #expect(update.authorBadgeTexts == detail.authorBadgeTexts)
+        }
+    }
+
+    @Test(arguments: [UIUserInterfaceStyle.light, .dark])
+    func authorStatusBadgesUseSemanticColorsInBothThemes(style: UIUserInterfaceStyle) {
+        UITraitCollection(userInterfaceStyle: style).performAsCurrent {
+            let texts = ["临时禁言", "永久禁言", "Dev", "新身份"]
+            let header = PostDetailHeaderContent(
+                postID: "956253", title: "标签测试", authorName: "Neutralize",
+                authorBadgeTexts: texts, avatarURL: nil, metadataText: "刚刚"
+            )
+            let post = PostBodyCellNode(content: header, renderedContent: [], onImageTapped: { _, _ in }, onTextLayoutInvalidated: {})
+            let comment = CommentCellNode(
+                comment: Comment(id: "3", authorName: "评论作者", avatarURL: nil, authorBadgeTexts: texts, floorText: "#3", createdAtText: "刚刚", contentHTML: "评论"),
+                renderedBody: [], onImageTapped: { _, _ in }, onTextLayoutInvalidated: {}
+            )
+            post.applyCurrentTheme()
+            comment.applyCurrentTheme()
+            #expect(post.debugAuthorBadgeTexts == texts)
+            #expect(comment.debugAuthorBadgeTexts == texts)
+            #expect(post.debugAuthorBadgeTitleColors == [.systemRed, .systemRed, .label, .label])
+            #expect(comment.debugAuthorBadgeTitleColors == post.debugAuthorBadgeTitleColors)
+            let badge = AuthorStatusBadgeNode(text: "临时禁言")
+            #expect(badge.borderColor == UIColor.systemRed.resolvedColor(with: .current).cgColor)
+        }
+    }
+
+    @Test func authorBadgesWrapWithoutOverflowingAtNarrowWidths() {
+        let texts = ["临时禁言", "Dev", "新身份", "另一个身份标签"]
+        let header = PostDetailHeaderContent(
+            postID: "956253", title: "标签测试", authorName: "Neutralize",
+            authorBadgeTexts: texts, avatarURL: nil, metadataText: "刚刚 · 交易"
+        )
+        let post = PostBodyCellNode(content: header, renderedContent: [], onImageTapped: { _, _ in }, onTextLayoutInvalidated: {})
+        let comment = CommentCellNode(
+            comment: Comment(id: "3", authorName: "很长的评论作者用户名", isPoster: true, avatarURL: nil, authorBadgeTexts: texts, floorText: "#326", createdAtText: "刚刚", contentHTML: "评论"),
+            renderedBody: [], onImageTapped: { _, _ in }, onTextLayoutInvalidated: {}
+        )
+        for node in [post as ASCellNode, comment as ASCellNode] {
+            let wide = node.layoutThatFits(ASSizeRange(min: .zero, max: CGSize(width: 600, height: CGFloat.greatestFiniteMagnitude)))
+            let narrow = node.layoutThatFits(ASSizeRange(min: .zero, max: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude)))
+            #expect(narrow.size.height > wide.size.height)
+            let elements = narrow.filteredNodeLayoutTree().sublayouts
+            let badges = elements.filter { $0.layoutElement is AuthorStatusBadgeNode }
+            #expect(badges.count == texts.count)
+            for layout in elements {
+                #expect(layout.position.x >= 0)
+                #expect(layout.position.x + layout.size.width <= 320.5)
+            }
+            #expect(Set(badges.map { $0.position.y }).count > 1)
+        }
+    }
+
+    @Test func authorRiskWarningPersistsAfterReactionUpdateAndIgnoresOtherPosts() {
+        let controller = PostDetailViewController(presenter: SpyPostDetailPresenter())
+        let detail = PostDetail(id: "975028", title: "测试帖子", authorName: "楼主", avatarURL: nil, metadataText: "拼车", contentHTML: "正文", comments: [])
+        controller.configureHeader(PostDetailHeaderContent(detail: detail), renderedContent: nil)
+        controller.updateAuthorRiskWarning(postID: detail.id, isVisible: true)
+        #expect(controller.authorRiskWarningPostID == detail.id)
+        controller.configureHeader(PostDetailHeaderContent(detail: detail.updatingPostLikeState(count: 1, isClicked: true)), renderedContent: nil)
+        controller.updateAuthorRiskWarning(postID: detail.id, isVisible: true)
+        #expect(controller.authorRiskWarningPostID == detail.id)
+        controller.updateAuthorRiskWarning(postID: "other", isVisible: true)
+        #expect(controller.authorRiskWarningPostID == detail.id)
+        controller.updateAuthorRiskWarning(postID: detail.id, isVisible: false)
+        #expect(controller.authorRiskWarningPostID == nil)
+    }
+
+    @Test func authorRiskWarningWrapsAtNarrowWidthAndAddsHeightOnlyWhenVisible() {
+        let header = PostDetailHeaderContent(postID: "975028", title: "测试帖子", authorName: "楼主", avatarURL: nil, metadataText: "拼车", contentHTML: "正文")
+        let range = ASSizeRange(min: .zero, max: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude))
+        let normal = PostBodyCellNode(content: header, renderedContent: [], onImageTapped: { _, _ in }, onTextLayoutInvalidated: {})
+        let warning = PostBodyCellNode(content: header, renderedContent: [], onImageTapped: { _, _ in }, showsAuthorRiskWarning: true, onTextLayoutInvalidated: {})
+        #expect(warning.layoutThatFits(range).size.height > normal.layoutThatFits(range).size.height + 60)
+    }
+
+    @Test func updatingAuthorBadgesReloadsHeaderAndPreservesRenderedBody() async throws {
+        let controller = PostDetailViewController(presenter: SpyPostDetailPresenter())
+        controller.loadViewIfNeeded()
+        let detail = PostDetail(
+            id: "956253", title: "标签测试", authorName: "Neutralize", avatarURL: nil,
+            metadataText: "刚刚", contentHTML: "<p>正文</p>", comments: []
+        )
+        controller.render(detail: detail)
+        await waitForDetailContent(in: controller)
+        let didRenderBody = await waitUntil { controller.headerRenderedContent != nil && controller.pendingReloadIndexPaths.isEmpty }
+        #expect(didRenderBody)
+        controller.headerRenderedContent = [.unsupported(reason: "cached-header")]
+
+        controller.updatePostBody(detail: PostDetail(
+            id: detail.id, title: detail.title, authorName: detail.authorName,
+            authorBadgeTexts: ["临时禁言"], avatarURL: nil,
+            metadataText: detail.metadataText, contentHTML: detail.contentHTML, comments: []
+        ))
+        #expect(controller.pendingReloadIndexPaths == [IndexPath(row: 0, section: 0)])
+        #expect(controller.headerRenderedContent?.testUnsupportedReasons() == ["cached-header"])
+        await tearDownPostDetailTextureViewController(controller)
+    }
+
+    @Test(arguments: [false, true])
+    func authorRiskWarningUpdatesExistingCellWithoutReload(isVisible: Bool) async throws {
+        let controller = PostDetailViewController(presenter: SpyPostDetailPresenter())
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 320, height: 800)
+        controller.view.layoutIfNeeded()
+        let detail = PostDetail(id: "975028", title: "测试帖子", authorName: "楼主", avatarURL: nil, metadataText: "拼车", contentHTML: "<p>保持原来的正文</p>", comments: [])
+        controller.render(detail: detail)
+        await waitForDetailContent(in: controller)
+        let didRenderBody = await waitUntil { controller.headerRenderedContent != nil && controller.pendingReloadIndexPaths.isEmpty }
+        #expect(didRenderBody)
+        controller.tableNode.waitUntilAllUpdatesAreProcessed()
+        let indexPath = IndexPath(row: 0, section: 0)
+        let originalNode = try #require(controller.tableNode.nodeForRow(at: indexPath) as? PostBodyCellNode)
+        let range = ASSizeRange(min: .zero, max: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude))
+        let originalHeight = originalNode.layoutThatFits(range).size.height
+
+        controller.updateAuthorRiskWarning(postID: detail.id, isVisible: isVisible)
+        #expect(controller.pendingReloadIndexPaths.isEmpty)
+        controller.tableNode.waitUntilAllUpdatesAreProcessed()
+        #expect(controller.tableNode.nodeForRow(at: indexPath) === originalNode)
+        let updatedHeight = originalNode.layoutThatFits(range).size.height
+        if isVisible {
+            #expect(updatedHeight > originalHeight + 60)
+        } else {
+            #expect(updatedHeight == originalHeight)
+        }
+
+        controller.updateAuthorRiskWarning(postID: detail.id, isVisible: false)
+        #expect(controller.pendingReloadIndexPaths.isEmpty)
+        controller.tableNode.waitUntilAllUpdatesAreProcessed()
+        #expect(controller.tableNode.nodeForRow(at: indexPath) === originalNode)
+        #expect(originalNode.layoutThatFits(range).size.height == originalHeight)
+        await tearDownPostDetailTextureViewController(controller)
+    }
+
     @Test func startsWithSkeletonRowsEvenWhenInitialHeaderExists() async throws {
         let post = PostSummary(
             id: "703863",

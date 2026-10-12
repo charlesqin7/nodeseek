@@ -47,6 +47,7 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
 
     private let titleNode = ASTextNode()
     private let authorButtonNode = ASButtonNode()
+    private let authorBadgeNodes: [AuthorStatusBadgeNode]
     private let metadataNode = ASTextNode()
     private let likeButtonNode = ASButtonNode()
     private let chickenLegButtonNode = ASButtonNode()
@@ -55,6 +56,7 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
     private let replyButtonNode = ASButtonNode()
     private let commentButtonNode = ASButtonNode()
     private let bodyNodes: [ASDisplayNode]
+    private var authorRiskWarningNode: PostAuthorRiskWarningNode?
     private let themeTraitObserver = ThemeTraitObserver()
     private var hasReactionActions: Bool {
         [
@@ -105,12 +107,14 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
         onCommentTapped: @escaping () -> Void = {},
         onContentCopyTapped: @escaping (PostDetailHeaderContent) -> Void = { _ in },
         showsReplyActions: Bool = true,
+        showsAuthorRiskWarning: Bool = false,
         onTextLayoutInvalidated: @escaping () -> Void,
         imageSizeProvider: @escaping (URL) -> CGSize? = { _ in nil },
         onImageSizeResolved: @escaping (URL, CGSize) -> Void = { _, _ in },
         onImageHeightReduced: @escaping () -> Void = {}
     ) {
         self.content = content
+        self.authorBadgeNodes = content.authorBadgeTexts.map { AuthorStatusBadgeNode(text: $0) }
         self.onImageTapped = onImageTapped
         self.onLinkTapped = onLinkTapped
         self.onSignatureLinkCandidatesTapped = onSignatureLinkCandidatesTapped
@@ -124,6 +128,8 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
         self.onContentCopyTapped = onContentCopyTapped
         self.showsReplyActions = showsReplyActions
         self.onTextLayoutInvalidated = onTextLayoutInvalidated
+        self.authorRiskWarningNode = showsAuthorRiskWarning
+            ? PostAuthorRiskWarningNode() : nil
         self.bodyNodes = DetailContentBlockNodeFactory.makeNodes(
             from: renderedContent ?? [],
             voteService: voteService,
@@ -162,27 +168,44 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
 
     override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
         titleNode.style.flexShrink = 1
-        authorButtonNode.style.flexShrink = 0
+        authorButtonNode.style.flexShrink = authorBadgeNodes.isEmpty ? 0 : 1
         metadataNode.style.flexShrink = 1
 
         let identityStack = ASStackLayoutSpec.horizontal()
         identityStack.spacing = 5
         identityStack.alignItems = .center
+        identityStack.flexWrap = authorBadgeNodes.isEmpty ? .noWrap : .wrap
+        identityStack.lineSpacing = 3
         var identityChildren: [ASLayoutElement] = []
         if hasDisplayableAuthor {
             identityChildren.append(authorButtonNode)
         }
-        if Self.metadataText(for: content).isEmpty == false {
+        authorBadgeNodes.forEach { $0.style.flexShrink = 0 }
+        identityChildren.append(contentsOf: authorBadgeNodes)
+        let hasMetadata = Self.metadataText(for: content).isEmpty == false
+        if authorBadgeNodes.isEmpty && hasMetadata {
             identityChildren.append(metadataNode)
         }
         identityStack.children = identityChildren
         identityStack.style.flexShrink = 1
         identityStack.style.flexGrow = 1
 
+        let identityBlock: ASLayoutElement
+        if authorBadgeNodes.isEmpty == false && hasMetadata {
+            let block = ASStackLayoutSpec.vertical()
+            block.spacing = 3
+            block.children = [identityStack, metadataNode]
+            block.style.flexShrink = 1
+            block.style.flexGrow = 1
+            identityBlock = block
+        } else {
+            identityBlock = identityStack
+        }
+
         let authorStack = ASStackLayoutSpec.horizontal()
         authorStack.spacing = PostDetailContentLayout.avatarSpacing
         authorStack.alignItems = .center
-        authorStack.children = hasDisplayableAuthor ? [avatarNode, identityStack] : [identityStack]
+        authorStack.children = hasDisplayableAuthor ? [avatarNode, identityBlock] : [identityBlock]
 
         let stack = ASStackLayoutSpec.vertical()
         stack.spacing = Layout.verticalSpacing
@@ -195,6 +218,9 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
             contentStack.children = bodyNodes
             stack.children?.append(contentStack)
         }
+        if let authorRiskWarningNode {
+            stack.children?.append(authorRiskWarningNode)
+        }
         if hasFooterActions {
             stack.children?.append(makeFooterActionStack())
         }
@@ -204,7 +230,16 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
 
     func applyCurrentTheme() {
         backgroundColor = .systemBackground
+        authorRiskWarningNode?.applyCurrentTheme()
+        authorBadgeNodes.forEach { $0.applyCurrentTheme() }
         configureText()
+    }
+
+    func updateAuthorRiskWarning(isVisible: Bool) {
+        guard (authorRiskWarningNode != nil) != isVisible else { return }
+        authorRiskWarningNode = isVisible ? PostAuthorRiskWarningNode() : nil
+        // 原地增减提醒，保留正文和图片节点；Texture 会同步 cell 高度。
+        setNeedsLayout()
     }
 
     private func configureText() {
@@ -269,6 +304,16 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
 
     var debugTitleAttributedText: NSAttributedString? {
         titleNode.attributedText
+    }
+
+    var debugAuthorBadgeTexts: [String] {
+        authorBadgeNodes.compactMap { $0.attributedTitle(for: .normal)?.string }
+    }
+
+    var debugAuthorBadgeTitleColors: [UIColor] {
+        authorBadgeNodes.compactMap {
+            $0.attributedTitle(for: .normal)?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+        }
     }
 
     private func configureActions() {
@@ -537,7 +582,8 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
     private static func metadataText(for content: PostDetailHeaderContent) -> String {
         let metadata = content.metadataText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard metadata.isEmpty == false else { return "" }
-        return AuthorDisplayPolicy.isDisplayable(content.authorName) ? "· \(metadata)" : metadata
+        let isInlineWithAuthor = content.authorBadgeTexts.isEmpty && AuthorDisplayPolicy.isDisplayable(content.authorName)
+        return isInlineWithAuthor ? "· \(metadata)" : metadata
     }
 
     var debugFooterActionAccessibilityLabels: [String] {

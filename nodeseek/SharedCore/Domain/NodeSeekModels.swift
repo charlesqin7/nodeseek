@@ -101,31 +101,36 @@ nonisolated struct PostDetail: Equatable, Sendable {
     let id: String
     let title: String
     let requiredReadingLevel: Int?
+    // 仅交易、拼车帖提供楼主 ID；阅读权限等级不能用于风险判断。
+    let lowLevelWarningAuthorID: Int?
     let authorName: String
+    let authorBadgeTexts: [String]
     let avatarURL: URL?
     let authorProfileURL: URL?
     let metadataText: String?
     let contentHTML: String
     let signatureHTML: String?
-    let likeCount: Int?
-    let isLikeClicked: Bool
-    let chickenLegCount: Int?
-    let isChickenLegClicked: Bool
-    let opposeCount: Int?
-    let isOpposeClicked: Bool
-    let favoriteCount: Int?
-    let isFavoriteCollected: Bool
+    private(set) var likeCount: Int?
+    private(set) var isLikeClicked: Bool
+    private(set) var chickenLegCount: Int?
+    private(set) var isChickenLegClicked: Bool
+    private(set) var opposeCount: Int?
+    private(set) var isOpposeClicked: Bool
+    private(set) var favoriteCount: Int?
+    private(set) var isFavoriteCollected: Bool
     let isRestricted: Bool
-    let comments: [Comment]
-    let page: Int
-    let pagination: PostDetailPagination?
-    let isLastPage: Bool
+    private(set) var comments: [Comment]
+    private(set) var page: Int
+    private(set) var pagination: PostDetailPagination?
+    private(set) var isLastPage: Bool
 
     init(
         id: String,
         title: String,
         requiredReadingLevel: Int? = nil,
+        lowLevelWarningAuthorID: Int? = nil,
         authorName: String,
+        authorBadgeTexts: [String] = [],
         avatarURL: URL?,
         authorProfileURL: URL? = nil,
         metadataText: String?,
@@ -148,7 +153,9 @@ nonisolated struct PostDetail: Equatable, Sendable {
         self.id = id
         self.title = title
         self.requiredReadingLevel = requiredReadingLevel
+        self.lowLevelWarningAuthorID = lowLevelWarningAuthorID
         self.authorName = authorName
+        self.authorBadgeTexts = authorBadgeTexts
         self.avatarURL = avatarURL
         self.authorProfileURL = authorProfileURL
         self.metadataText = metadataText
@@ -170,210 +177,74 @@ nonisolated struct PostDetail: Equatable, Sendable {
     }
 
     func updatingFavoriteState(count: Int?, isCollected: Bool) -> PostDetail {
-        PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: count,
-            isFavoriteCollected: isCollected,
-            isRestricted: isRestricted,
-            comments: comments,
-            page: page,
-            pagination: pagination,
-            isLastPage: isLastPage
-        )
+        var updated = self
+        updated.favoriteCount = count
+        updated.isFavoriteCollected = isCollected
+        return updated
     }
 
     func updatingPostLikeState(count: Int?, isClicked: Bool) -> PostDetail {
-        PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: count,
-            isLikeClicked: isClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isRestricted: isRestricted,
-            comments: comments,
-            page: page,
-            pagination: pagination,
-            isLastPage: isLastPage
-        )
+        var updated = self
+        updated.likeCount = count
+        updated.isLikeClicked = isClicked
+        return updated
     }
 
     func updatingCommentLikeState(commentID: String, count: Int?, isClicked: Bool) -> PostDetail {
-        let nextComments = comments.map { comment in
+        var updated = self
+        updated.comments = comments.map { comment in
             comment.id == commentID
                 ? comment.updatingLikeReaction(count: count, isClicked: isClicked)
                 : comment
         }
-
-        return PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isRestricted: isRestricted,
-            comments: nextComments,
-            page: page,
-            pagination: pagination,
-            isLastPage: isLastPage
-        )
+        return updated
     }
 
     func updatingPostChickenLegState(count: Int?, isClicked: Bool) -> PostDetail {
-        PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: count,
-            isChickenLegClicked: isClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isRestricted: isRestricted,
-            comments: comments,
-            page: page,
-            pagination: pagination,
-            isLastPage: isLastPage
-        )
+        var updated = self
+        updated.chickenLegCount = count
+        updated.isChickenLegClicked = isClicked
+        return updated
     }
 
     func updatingCommentChickenLegState(commentID: String, count: Int?, isClicked: Bool) -> PostDetail {
-        let nextComments = comments.map { comment in
+        var updated = self
+        updated.comments = comments.map { comment in
             comment.id == commentID
                 ? comment.updatingChickenLegReaction(count: count, isClicked: isClicked)
                 : comment
         }
-
-        return PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isRestricted: isRestricted,
-            comments: nextComments,
-            page: page,
-            pagination: pagination,
-            isLastPage: isLastPage
-        )
+        return updated
     }
 
     func updatingPostOpposeState(count: Int?, isClicked: Bool) -> PostDetail {
-        PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: count,
-            isOpposeClicked: isClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isRestricted: isRestricted,
-            comments: comments,
-            page: page,
-            pagination: pagination,
-            isLastPage: isLastPage
-        )
+        var updated = self
+        updated.opposeCount = count
+        updated.isOpposeClicked = isClicked
+        return updated
     }
 
     func updatingCommentOpposeState(commentID: String, count: Int?, isClicked: Bool) -> PostDetail {
-        let nextComments = comments.map { comment in
+        var updated = self
+        updated.comments = comments.map { comment in
             comment.id == commentID
                 ? comment.updatingOpposeReaction(count: count, isClicked: isClicked)
                 : comment
         }
+        return updated
+    }
 
-        return PostDetail(
-            id: id,
-            title: title,
-            requiredReadingLevel: requiredReadingLevel,
-            authorName: authorName,
-            avatarURL: avatarURL,
-            authorProfileURL: authorProfileURL,
-            metadataText: metadataText,
-            contentHTML: contentHTML,
-            signatureHTML: signatureHTML,
-            likeCount: likeCount,
-            isLikeClicked: isLikeClicked,
-            chickenLegCount: chickenLegCount,
-            isChickenLegClicked: isChickenLegClicked,
-            opposeCount: opposeCount,
-            isOpposeClicked: isOpposeClicked,
-            favoriteCount: favoriteCount,
-            isFavoriteCollected: isFavoriteCollected,
-            isRestricted: isRestricted,
-            comments: nextComments,
-            page: page,
-            pagination: pagination,
-            isLastPage: isLastPage
-        )
+    func replacingComments(
+        _ nextComments: [Comment],
+        page: Int,
+        pagination: PostDetailPagination?
+    ) -> PostDetail {
+        var updated = self
+        updated.comments = nextComments
+        updated.page = max(1, page)
+        updated.pagination = pagination
+        updated.isLastPage = pagination?.nextPage == nil
+        return updated
     }
 }
 

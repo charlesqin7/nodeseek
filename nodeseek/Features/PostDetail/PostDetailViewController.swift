@@ -197,6 +197,7 @@ class PostDetailViewController: UIViewController {
     let initialPage: Int
     let wasOpenedFromInitialAnchor: Bool
     var currentHeaderContent: PostDetailHeaderContent?
+    var authorRiskWarningPostID: String?
     var pagination: PostDetailPagination?
     var headerRenderedContent: [RenderedContentBlock]?
     var comments: [Comment] = []

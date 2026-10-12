@@ -279,6 +279,20 @@ extension PostDetailViewController: PostDetailViewProtocol {
         updateReplyButtonVisibility()
     }
 
+    func updateAuthorRiskWarning(postID: String, isVisible: Bool) {
+        if let currentHeaderContent, currentHeaderContent.postID != postID { return }
+        let wasVisible = authorRiskWarningPostID == postID
+        authorRiskWarningPostID = isVisible ? postID : nil
+        guard wasVisible != isVisible, isViewLoaded, displayMode == .content else { return }
+        // 等待 Texture 完成在途的 cell 创建，避免查询结果早于正文节点就绪。
+        tableNode.onDidFinishProcessingUpdates { [weak self] in
+            guard let self, self.currentHeaderContent?.postID == postID,
+                  let row = self.detailRows.firstIndex(where: { if case .header = $0 { return true }; return false }),
+                  let node = self.tableNode.nodeForRow(at: IndexPath(row: row, section: 0)) as? PostBodyCellNode else { return }
+            node.updateAuthorRiskWarning(isVisible: self.authorRiskWarningPostID == postID)
+        }
+    }
+
     func updatePostBody(detail: PostDetail) {
         guard hasRenderedDetailContent else {
             render(detail: detail)
@@ -375,6 +389,7 @@ extension PostDetailViewController: PostDetailViewProtocol {
             && lhs.title == rhs.title
             && lhs.requiredReadingLevel == rhs.requiredReadingLevel
             && lhs.authorName == rhs.authorName
+            && lhs.authorBadgeTexts == rhs.authorBadgeTexts
             && lhs.avatarURL == rhs.avatarURL
             && lhs.authorProfileURL == rhs.authorProfileURL
             && lhs.metadataText == rhs.metadataText

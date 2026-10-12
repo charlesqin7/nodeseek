@@ -229,6 +229,7 @@ struct PostDetailPresenterTests {
             id: "706958",
             title: "标题",
             authorName: "mist",
+            authorBadgeTexts: ["临时禁言"],
             avatarURL: nil,
             metadataText: nil,
             contentHTML: "<p>正文</p>",
@@ -273,6 +274,9 @@ struct PostDetailPresenterTests {
         #expect(view.renderedDetails.count == 1)
         #expect(view.appendedCommentPageDetails.map(\.page) == [2])
         #expect(view.hideLoadingMoreCommentsCount == 1)
+        presenter.didAddFavorite(PostCollectionResponse(postCollectionCount: 1))
+        #expect(view.updatedPostBodyDetails.last?.authorBadgeTexts == ["临时禁言"])
+        #expect(view.updatedPostBodyDetails.last?.comments.count == 2)
     }
 
     @Test func refreshingAtCommentEndWithOnlyOneLoadedPageReloadsCurrentPage() {
@@ -1335,6 +1339,7 @@ private final class SpyPostDetailView: PostDetailViewProtocol {
     func render(detail: PostDetail) { renderedDetails.append(detail) }
     func refreshCurrentCommentPage(detail: PostDetail) { refreshedCommentPageDetails.append(detail) }
     func appendCommentPage(detail: PostDetail) { appendedCommentPageDetails.append(detail) }
+    func updateAuthorRiskWarning(postID: String, isVisible: Bool) {}
     func updatePostBody(detail: PostDetail) { updatedPostBodyDetails.append(detail) }
     func updateCommentLike(commentID: String, count: Int?, isClicked: Bool) {
         updatedCommentLikeEvents.append((commentID: commentID, count: count, isClicked: isClicked))

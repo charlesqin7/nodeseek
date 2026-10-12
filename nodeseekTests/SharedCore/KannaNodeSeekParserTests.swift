@@ -29,6 +29,92 @@ enum FixtureLoader {
 }
 
 struct KannaNodeSeekParserTests {
+    @Test func parsesAuthorStatusBadgesForPostAndComments() throws {
+        let html = """
+        <div class="nsk-post-wrapper"><div class="nsk-post">
+          <div class="post-title"><h1>作者状态标签</h1></div>
+          <div id="0" class="content-item"><div class="author-info">
+            <a class="author-name" href="/space/1">Neutralize</a>
+            <span class="is-poster role-tag nsk-badge">楼主</span>
+            <span class="role-tag nsk-badge"><svg><use href="#alarm"></use></svg><span>临时禁言</span></span>
+            <span class="role-tag"> 新身份 </span>
+            <span class="nsk-badge">临时禁言</span><span class="role-tag"> </span>
+          </div><article class="post-content"><p>正文</p></article></div>
+        </div><ul class="comments">
+          <li id="3" data-comment-id="3" class="content-item"><div class="author-info">
+            <a class="author-name" href="/space/3">评论作者</a>
+            <span class="role-tag nsk-badge"><span>临时禁言</span></span>
+            <span class="nsk-badge">Dev</span>
+          </div><article class="post-content"><p>评论</p></article></li>
+          <li id="4" data-comment-id="4" class="content-item"><div class="author-info">
+            <a class="author-name" href="/space/1">Neutralize</a>
+            <span class="is-poster role-tag nsk-badge">楼主</span>
+            <span class="nsk-badge">临时禁言</span>
+          </div><article class="post-content"><p>楼主回复</p></article></li>
+        </ul></div>
+        """
+        let detail = try KannaNodeSeekParser(baseURL: NodeSeekSite.baseURL).parsePostDetail(
+            html: html, url: NodeSeekSite.postURL(id: "956253", page: 1)
+        )
+        #expect(detail.authorBadgeTexts == ["临时禁言", "新身份"])
+        #expect(detail.comments.map(\.authorBadgeTexts) == [["临时禁言", "Dev"], ["临时禁言"]])
+        #expect(detail.comments.last?.isPoster == true)
+        let updatedDetails = [
+            detail.updatingFavoriteState(count: 2, isCollected: true),
+            detail.updatingPostLikeState(count: 2, isClicked: true),
+            detail.updatingPostChickenLegState(count: 2, isClicked: true),
+            detail.updatingPostOpposeState(count: 2, isClicked: true),
+            detail.updatingCommentLikeState(commentID: "3", count: 2, isClicked: true),
+            detail.updatingCommentChickenLegState(commentID: "3", count: 2, isClicked: true),
+            detail.updatingCommentOpposeState(commentID: "3", count: 2, isClicked: true)
+        ]
+        for updated in updatedDetails {
+            #expect(updated.authorBadgeTexts == detail.authorBadgeTexts)
+            #expect(updated.comments.map(\.authorBadgeTexts) == detail.comments.map(\.authorBadgeTexts))
+        }
+        let unbadged = try KannaNodeSeekParser(baseURL: NodeSeekSite.baseURL).parsePostDetail(
+            html: "<div class='post-title'><h1>无作者标签</h1></div>",
+            url: NodeSeekSite.postURL(id: "2", page: 1)
+        )
+        #expect(unbadged.authorBadgeTexts.isEmpty)
+    }
+
+    @Test(arguments: ["trade", "carpool", "daily"])
+    func lowLevelWarningUsesOriginalPosterFromConfig(category: String) throws {
+        let payload = Data("{\"postData\":{\"category\":\"\(category)\",\"rank\":0,\"op\":{\"uid\":70925},\"comments\":[{\"uid\":999,\"rank\":0}]}}".utf8).base64EncodedString()
+        let html = """
+        <div class="post-title"><h1>测试帖子</h1></div>
+        <script id="temp-script">\(payload)</script>
+        """
+        let detail = try KannaNodeSeekParser(baseURL: NodeSeekSite.baseURL).parsePostDetail(
+            html: html, url: NodeSeekSite.postURL(id: "975028", page: 2)
+        )
+        #expect(detail.lowLevelWarningAuthorID == (category == "daily" ? nil : 70925))
+        #expect(detail.updatingFavoriteState(count: 2, isCollected: true).lowLevelWarningAuthorID == detail.lowLevelWarningAuthorID)
+    }
+
+    @Test func lowLevelWarningFallsBackToBodyAuthorWithoutUsingCommentAuthor() throws {
+        let html = """
+        <div class="post-title"><h1>测试帖子</h1></div>
+        <div class="nsk-post"><div class="content-item">
+          <a class="author-name" href="/space/70925">楼主</a>
+          <span class="content-category"><a href="/categories/trade">交易</a></span>
+          <article class="post-content">正文</article>
+        </div><ul class="comments"><li class="content-item">
+          <a class="author-name" href="/space/999">回帖用户</a>
+          <span class="content-category"><a href="/categories/carpool">拼车</a></span>
+        </li></ul></div>
+        """
+        let parser = KannaNodeSeekParser(baseURL: NodeSeekSite.baseURL)
+        let detail = try parser.parsePostDetail(html: html, url: NodeSeekSite.postURL(id: "975028", page: 1))
+        #expect(detail.lowLevelWarningAuthorID == 70925)
+        let ordinary = try parser.parsePostDetail(
+            html: html.replacingOccurrences(of: "/categories/trade", with: "/categories/daily"),
+            url: NodeSeekSite.postURL(id: "975028", page: 1)
+        )
+        #expect(ordinary.lowLevelWarningAuthorID == nil)
+    }
+
     @Test func parsesAccountFromRightPanelUserCard() throws {
         let html = """
         <header>

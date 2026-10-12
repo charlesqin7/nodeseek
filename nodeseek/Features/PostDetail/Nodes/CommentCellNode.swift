@@ -71,7 +71,7 @@ final class CommentCellNode: ASCellNode, ThemeRefreshableNode {
 
     private let authorButtonNode = ASButtonNode()
     private let posterBadgeNode = ASTextNode()
-    private let authorBadgeNodes: [ASButtonNode]
+    private let authorBadgeNodes: [AuthorStatusBadgeNode]
     private let timeNode = ASTextNode()
     private let hotBadgeNode = ASImageNode()
     private let floorNode = ASTextNode()
@@ -138,7 +138,7 @@ final class CommentCellNode: ASCellNode, ThemeRefreshableNode {
         self.onReplyTapped = onReplyTapped
         self.onQuoteTapped = onQuoteTapped
         self.onTextLayoutInvalidated = onTextLayoutInvalidated
-        self.authorBadgeNodes = comment.authorBadgeTexts.map { Self.makeAuthorBadgeNode(text: $0) }
+        self.authorBadgeNodes = comment.authorBadgeTexts.map { AuthorStatusBadgeNode(text: $0) }
         self.bodyNodes = DetailContentBlockNodeFactory.makeNodes(
             from: renderedBody ?? [],
             onImageTapped: onImageTapped,
@@ -192,6 +192,8 @@ final class CommentCellNode: ASCellNode, ThemeRefreshableNode {
         let identityStack = ASStackLayoutSpec.horizontal()
         identityStack.spacing = Layout.headerSpacing
         identityStack.alignItems = .center
+        identityStack.flexWrap = authorBadgeNodes.isEmpty ? .noWrap : .wrap
+        identityStack.lineSpacing = 3
         var identityChildren: [ASLayoutElement] = []
         if hasDisplayableAuthor {
             identityChildren.append(authorButtonNode)
@@ -276,6 +278,7 @@ final class CommentCellNode: ASCellNode, ThemeRefreshableNode {
     func applyCurrentTheme() {
         backgroundColor = .systemBackground
         separatorNode.backgroundColor = .separator
+        authorBadgeNodes.forEach { $0.applyCurrentTheme() }
         configureText()
     }
 
@@ -350,28 +353,6 @@ final class CommentCellNode: ASCellNode, ThemeRefreshableNode {
     private func installContextMenu(on view: UIView) {
         guard view.interactions.contains(where: { $0 is UIContextMenuInteraction }) == false else { return }
         view.addInteraction(UIContextMenuInteraction(delegate: self))
-    }
-
-    private static func makeAuthorBadgeNode(text: String) -> ASButtonNode {
-        let node = ASButtonNode()
-        let font = AppTypography.commentBadgeFont()
-        node.setAttributedTitle(
-            NSAttributedString(
-                string: text,
-                attributes: [
-                    .font: font,
-                    .foregroundColor: UIColor.label
-                ]
-            ),
-            for: .normal
-        )
-        node.contentEdgeInsets = UIEdgeInsets(top: 2, left: 5, bottom: 2, right: 5)
-        node.cornerRadius = 4
-        node.borderWidth = 1
-        node.borderColor = UIColor.separator.cgColor
-        node.isUserInteractionEnabled = false
-        node.accessibilityLabel = text
-        return node
     }
 
     private func makeFooterActionStack() -> ASLayoutSpec {
