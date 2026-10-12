@@ -1,0 +1,74 @@
+name: Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/scroll-performance-ipa
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Archive without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild -version | tee build/toolchain.txt
+          git rev-parse HEAD > build/commit.txt
+          xcodebuild archive \
+            -project nodeseek.xcodeproj \
+            -scheme nodeseek \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/nodeseek.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            CODE_SIGN_ENTITLEMENTS='' \
+            DEVELOPMENT_TEAM='' \
+            PROVISIONING_PROFILE_SPECIFIER='' \
+            2>&1 | tee build/archive.log
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d build/nodeseek.xcarchive/Products/Applications/nodeseek.app
+          mkdir -p build/package/Payload
+          ditto build/nodeseek.xcarchive/Products/Applications/nodeseek.app build/package/Payload/nodeseek.app
+          cd build/package
+          ditto -c -k --keepParent Payload ../nodeseek-unsigned.ipa
+          cd ..
+          shasum -a 256 nodeseek-unsigned.ipa > SHA256SUMS.txt
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodeseek-unsigned-ipa
+          path: |
+            build/nodeseek-unsigned.ipa
+            build/commit.txt
+            build/toolchain.txt
+            build/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa-build-log
+          path: build/archive.log
+          if-no-files-found: ignore
+          retention-days: 14
