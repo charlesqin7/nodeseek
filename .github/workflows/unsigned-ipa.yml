@@ -28,7 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
-          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for devices in d["devices"].values() for v in devices if "iPhone" in v["name"]))')
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; r=sorted((r for r in d if "SimRuntime.iOS-" in r), key=lambda r: tuple(map(int,r.split("iOS-")[1].split("-"))), reverse=True); print(next(v["udid"] for r in r for v in d[r] if "iPhone" in v["name"] and v.get("isAvailable",False)))')
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
           xcodebuild test -project nodeseek.xcodeproj -scheme nodeseek \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -parallel-testing-enabled NO \
