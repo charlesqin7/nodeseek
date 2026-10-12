@@ -10,7 +10,7 @@ import UIKit
 
 final class AppTextSizeSettings {
     static let didChangeNotification = Notification.Name("AppTextSizeSettings.didChange")
-    static let shared = AppTextSizeSettings()
+    static let shared = AppTextSizeSettings(contentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
 
     static let minimumPointOffset: CGFloat = -4
     static let maximumPointOffset: CGFloat = 8

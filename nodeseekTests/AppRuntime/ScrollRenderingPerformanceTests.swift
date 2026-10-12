@@ -10,7 +10,7 @@ struct ScrollRenderingPerformanceTests {
         let view = DetailRichTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 100))
         let text = NSAttributedString(string: String(repeating: "长回复测量 ", count: 60),
                                       attributes: [.font: UIFont.systemFont(ofSize: 17)])
-        view.configure(text, onLayoutInvalidated: nil)
+        view.configure(text, onImageTapped: nil, onLayoutInvalidated: nil)
         let first = view.systemLayoutSizeFitting(CGSize(width: 320, height: 0))
         let count = view.measurementCount
         for _ in 0..<30 {
@@ -21,7 +21,7 @@ struct ScrollRenderingPerformanceTests {
         #expect(narrow.height > first.height)
         #expect(view.measurementCount > count)
         view.configure(NSAttributedString(string: "短回复", attributes: [.font: UIFont.systemFont(ofSize: 17)]),
-                       onLayoutInvalidated: nil)
+                       onImageTapped: nil, onLayoutInvalidated: nil)
         #expect(view.systemLayoutSizeFitting(CGSize(width: 160, height: 0)).height < narrow.height)
         let beforeTheme = view.measurementCount
         view.refreshAppearanceForCurrentTraits()

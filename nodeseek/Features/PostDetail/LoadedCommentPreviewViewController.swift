@@ -23,7 +23,9 @@ final class LoadedCommentPreviewViewController: UIViewController {
     }
 
     private let comment: Comment
-    private let renderedContent: [RenderedContentBlock]?
+    private var renderedContent: [RenderedContentBlock]?
+    private let renderQueue = DispatchQueue(label: "nodeseek.comment-preview.typography", qos: .userInitiated)
+    private var renderGeneration = 0
     private let showsFullPostButton: Bool
     private let onOpenFullPost: () -> Void
     private let onReveal: () -> Void
@@ -82,7 +84,7 @@ final class LoadedCommentPreviewViewController: UIViewController {
         renderedContent: [RenderedContentBlock]?,
         width: CGFloat
     ) -> CGFloat {
-        let bodyFont = UIFont.preferredFont(forTextStyle: .body)
+        let bodyFont = AppTypography.commentBodyFont()
         var textHeight: CGFloat = 0
         var extraBlockHeight: CGFloat = 0
         if let renderedContent, renderedContent.isEmpty == false {
@@ -130,6 +132,33 @@ final class LoadedCommentPreviewViewController: UIViewController {
         tableNode.delegate = self
         configureContent()
         applyCurrentTheme()
+        NotificationCenter.default.addObserver(self, selector: #selector(textSizeDidChange),
+            name: AppTextSizeSettings.didChangeNotification, object: nil)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func textSizeDidChange() {
+        renderGeneration += 1
+        let generation = renderGeneration
+        let comment = comment
+        let typography = AppTextSizeSettings.shared.configuration
+        let width = max(view.bounds.width - PostDetailContentLayout.horizontalInset * 2
+            - PostDetailContentLayout.avatarSize - PostDetailContentLayout.avatarSpacing, 1)
+        let showsSignature = PostSignatureDisplaySettings.shared.showsSignatures
+        renderQueue.async { [weak self] in
+            let content = typography.performAsCurrent {
+                PostDetailViewController.makeRenderedContent(html: comment.contentHTML, signatureHTML: comment.signatureHTML,
+                    baseURL: NodeSeekSite.baseURL, maxImageWidth: width, showsSignature: showsSignature)
+            }
+            DispatchQueue.main.async {
+                guard let self, self.renderGeneration == generation else { return }
+                self.renderedContent = content
+                self.tableNode.reloadData()
+                self.preferredContentSize = Self.preferredSize(comment: comment, renderedContent: content,
+                    containerSize: self.view.window?.bounds.size ?? self.view.bounds.size)
+            }
+        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -251,8 +280,9 @@ extension LoadedCommentPreviewViewController: ASTableDataSource, ASTableDelegate
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
         let comment = comment
         let renderedContent = renderedContent
+        let typography = AppTextSizeSettings.shared.configuration
         return { [weak self] in
-            CommentCellNode(
+            typography.performAsCurrent { CommentCellNode(
                 comment: comment,
                 renderedBody: renderedContent,
                 onImageTapped: { _, _ in },
@@ -266,7 +296,7 @@ extension LoadedCommentPreviewViewController: ASTableDataSource, ASTableDelegate
                 onTextLayoutInvalidated: {
                     self?.tableNode.relayoutItems()
                 }
-            )
+            ) }
         }
     }
 }
