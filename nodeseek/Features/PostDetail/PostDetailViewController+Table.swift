@@ -124,10 +124,13 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
         let traits = tableNode.view.traitCollection
         let makeNode = makeNodeBlock(at: indexPath)
+        let typography = AppTextSizeSettings.shared.configuration
         return {
-            var node: ASCellNode!
-            traits.performAsCurrent { node = makeNode() }
-            return node
+            typography.performAsCurrent {
+                var node: ASCellNode!
+                traits.performAsCurrent { node = makeNode() }
+                return node
+            }
         }
     }
 

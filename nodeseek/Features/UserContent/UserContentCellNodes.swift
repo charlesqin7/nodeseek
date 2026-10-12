@@ -111,7 +111,7 @@ final class UserDiscussionCellNode: ASCellNode {
         automaticallyManagesSubnodes = true
         backgroundColor = .clear
         selectionStyle = .default
-        titleNode.maximumNumberOfLines = 2
+        titleNode.maximumNumberOfLines = 0
         titleNode.attributedText = UserContentText.title(record.title)
     }
 
@@ -128,7 +128,7 @@ final class UserCollectionCellNode: ASCellNode {
         automaticallyManagesSubnodes = true
         backgroundColor = .clear
         selectionStyle = .default
-        titleNode.maximumNumberOfLines = 2
+        titleNode.maximumNumberOfLines = 0
         titleNode.attributedText = UserContentText.title(record.title)
     }
 
@@ -152,7 +152,7 @@ final class UserCommentCellNode: ASCellNode {
         automaticallyManagesSubnodes = true
         selectionStyle = .default
         backgroundColor = .clear
-        titleNode.maximumNumberOfLines = 2
+        titleNode.maximumNumberOfLines = 0
         titleNode.attributedText = UserContentText.title(record.title)
         textNode.maximumNumberOfLines = 2
         textNode.attributedText = Self.commentText(record.text)

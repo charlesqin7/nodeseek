@@ -228,11 +228,14 @@ extension UserCommentsViewController: ASTableDataSource {
         switch displayMode {
         case .content:
             let record = records[indexPath.row]
+            let typography = AppTextSizeSettings.shared.configuration
             return { [weak self] in
-                UserCommentCellNode(
-                    record: record,
-                    onOpenComment: { [weak self] in self?.openComment(record) }
-                )
+                typography.performAsCurrent {
+                    UserCommentCellNode(
+                        record: record,
+                        onOpenComment: { [weak self] in self?.openComment(record) }
+                    )
+                }
             }
         case .skeleton:
             return {

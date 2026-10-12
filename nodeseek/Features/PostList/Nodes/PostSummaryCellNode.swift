@@ -314,10 +314,10 @@ final class PostSummaryCellNode: ASCellNode, ThemeRefreshableNode {
 enum PostListCellStyle {
     enum Typography {
         static let titleMaximumNumberOfLines: UInt = 0
-        static let metadataMaximumNumberOfLines: UInt = 1
+        static let metadataMaximumNumberOfLines: UInt = 0
         static let titlePointSize: CGFloat = 17
         static let metadataPointSize: CGFloat = 13
-        static let titleWeight = UIFont.Weight.medium
+        static let titleWeight = UIFont.Weight.regular
         static let metadataWeight = UIFont.Weight.regular
 
         static var titleFont: UIFont {

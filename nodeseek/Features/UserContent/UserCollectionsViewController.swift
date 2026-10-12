@@ -223,8 +223,9 @@ extension UserCollectionsViewController: ASTableDataSource {
         switch displayMode {
         case .content:
             let record = records[indexPath.row]
+            let typography = AppTextSizeSettings.shared.configuration
             return {
-                UserCollectionCellNode(record: record)
+                typography.performAsCurrent { UserCollectionCellNode(record: record) }
             }
         case .skeleton:
             return {

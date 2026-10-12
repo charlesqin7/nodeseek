@@ -328,10 +328,13 @@ extension PostTextureListView: ASTableDataSource {
         case .content:
             let item = items[indexPath.row]
             let traits = tableNode.view.traitCollection
+            let typography = AppTextSizeSettings.shared.configuration
             return {
-                var node: PostSummaryCellNode!
-                traits.performAsCurrent { node = PostSummaryCellNode(item: item) }
-                return node
+                typography.performAsCurrent {
+                    var node: PostSummaryCellNode!
+                    traits.performAsCurrent { node = PostSummaryCellNode(item: item) }
+                    return node
+                }
             }
         case .skeleton:
             return {

@@ -183,32 +183,35 @@ extension PostDetailViewController: PostDetailViewProtocol {
         let width = availableCommentContentWidth
         let showsSignature = PostSignatureDisplaySettings.shared.showsSignatures
         let baseURL = baseURL
+        let typography = AppTextSizeSettings.shared.configuration
         renderQueue.async { [weak self] in
-            var cache: [String: [RenderedContentBlock]] = [:]
-            ScrollPerformance.measure("CommentPagePrepare") {
-                for comment in detail.comments {
-                    cache[comment.id] = Self.makeRenderedContent(
-                        html: comment.contentHTML, signatureHTML: comment.signatureHTML,
-                        baseURL: baseURL, maxImageWidth: width, showsSignature: showsSignature
-                    )
+            typography.performAsCurrent {
+                var cache: [String: [RenderedContentBlock]] = [:]
+                ScrollPerformance.measure("CommentPagePrepare") {
+                    for comment in detail.comments {
+                        cache[comment.id] = Self.makeRenderedContent(
+                            html: comment.contentHTML, signatureHTML: comment.signatureHTML,
+                            baseURL: baseURL, maxImageWidth: width, showsSignature: showsSignature
+                        )
+                    }
                 }
-            }
-            DispatchQueue.main.async {
-                guard let self, self.pendingCommentAppendID == requestID,
-                      self.currentHeaderContent?.postID == detail.id else { return }
-                guard self.renderGeneration == generation,
-                      abs(self.availableCommentContentWidth - width) < 0.5 else {
-                    // 字号或签名设置变化后重新准备；刷新/切页会取消 requestID。
-                    self.prepareCommentAppend(detail: detail, requestID: requestID)
-                    return
+                DispatchQueue.main.async {
+                    guard let self, self.pendingCommentAppendID == requestID,
+                          self.currentHeaderContent?.postID == detail.id else { return }
+                    guard self.renderGeneration == generation,
+                          abs(self.availableCommentContentWidth - width) < 0.5 else {
+                        // 字号或签名设置变化后重新准备；刷新/切页会取消 requestID。
+                        self.prepareCommentAppend(detail: detail, requestID: requestID)
+                        return
+                    }
+                    self.pendingCommentAppendID = nil
+                    for comment in detail.comments {
+                        self.commentRenderedCache[comment.id] = cache[comment.id]
+                        self.renderedCommentIDs.insert(comment.id)
+                    }
+                    self.insertPreparedCommentPage(detail: detail)
+                    self.hideLoadingMoreComments()
                 }
-                self.pendingCommentAppendID = nil
-                for comment in detail.comments {
-                    self.commentRenderedCache[comment.id] = cache[comment.id]
-                    self.renderedCommentIDs.insert(comment.id)
-                }
-                self.insertPreparedCommentPage(detail: detail)
-                self.hideLoadingMoreComments()
             }
         }
     }
@@ -489,42 +492,45 @@ extension PostDetailViewController: PostDetailViewProtocol {
             execute: timeoutWorkItem
         )
 
+        let typography = AppTextSizeSettings.shared.configuration
         renderQueue.async { [weak self] in
-            let renderedHeaderContent = Self.makeRenderedContent(
-                html: headerContent.contentHTML,
-                signatureHTML: headerContent.signatureHTML,
-                baseURL: baseURL,
-                maxImageWidth: headerWidth,
-                showsSignature: showsSignature
-            )
-            var renderedCommentCache: [String: [RenderedContentBlock]] = [:]
-            var renderedCommentIDs = Set<String>()
-
-            for comment in detail.comments {
-                let renderedContent = Self.makeRenderedContent(
-                    html: comment.contentHTML,
-                    signatureHTML: comment.signatureHTML,
+            typography.performAsCurrent {
+                let renderedHeaderContent = Self.makeRenderedContent(
+                    html: headerContent.contentHTML,
+                    signatureHTML: headerContent.signatureHTML,
                     baseURL: baseURL,
-                    maxImageWidth: commentWidth,
+                    maxImageWidth: headerWidth,
                     showsSignature: showsSignature
                 )
-                renderedCommentIDs.insert(comment.id)
-                if let renderedContent {
-                    renderedCommentCache[comment.id] = renderedContent
-                }
-            }
+                var renderedCommentCache: [String: [RenderedContentBlock]] = [:]
+                var renderedCommentIDs = Set<String>()
 
-            DispatchQueue.main.async {
-                self?.revealInitialContent(
-                    detail: detail,
-                    targetPage: targetPage,
-                    headerContent: headerContent,
-                    renderedHeaderContent: renderedHeaderContent,
-                    renderedCommentCache: renderedCommentCache,
-                    renderedCommentIDs: renderedCommentIDs,
-                    generation: generation,
-                    shouldScheduleMissingRender: false
-                )
+                for comment in detail.comments {
+                    let renderedContent = Self.makeRenderedContent(
+                        html: comment.contentHTML,
+                        signatureHTML: comment.signatureHTML,
+                        baseURL: baseURL,
+                        maxImageWidth: commentWidth,
+                        showsSignature: showsSignature
+                    )
+                    renderedCommentIDs.insert(comment.id)
+                    if let renderedContent {
+                        renderedCommentCache[comment.id] = renderedContent
+                    }
+                }
+
+                DispatchQueue.main.async {
+                    self?.revealInitialContent(
+                        detail: detail,
+                        targetPage: targetPage,
+                        headerContent: headerContent,
+                        renderedHeaderContent: renderedHeaderContent,
+                        renderedCommentCache: renderedCommentCache,
+                        renderedCommentIDs: renderedCommentIDs,
+                        generation: generation,
+                        shouldScheduleMissingRender: false
+                    )
+                }
             }
         }
     }
@@ -544,18 +550,19 @@ extension PostDetailViewController: PostDetailViewProtocol {
         initialContentRevealWorkItem?.cancel()
         initialContentRevealWorkItem = nil
 
+        let isCurrentTypography = renderGeneration == generation
         applyDetailContent(
             targetPage: targetPage,
             headerContent: headerContent,
-            renderedHeaderContent: renderedHeaderContent,
+            renderedHeaderContent: isCurrentTypography ? renderedHeaderContent : nil,
             pagination: detail.pagination,
             comments: detail.comments,
             commentRenderSnapshot: DetailCommentRenderSnapshot(
-                cache: renderedCommentCache,
-                renderedIDs: renderedCommentIDs
+                cache: isCurrentTypography ? renderedCommentCache : [:],
+                renderedIDs: isCurrentTypography ? renderedCommentIDs : []
             ),
             shouldScrollToTop: false,
-            shouldScheduleMissingRender: shouldScheduleMissingRender
+            shouldScheduleMissingRender: shouldScheduleMissingRender || !isCurrentTypography
         )
     }
 

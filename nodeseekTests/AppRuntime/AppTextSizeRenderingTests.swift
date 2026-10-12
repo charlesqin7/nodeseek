@@ -12,15 +12,13 @@ import UIKit
 @Suite(.serialized)
 struct AppTextSizeRenderingTests {
     @Test func detailHTMLRendererUsesAppTextSizeForBodyText() throws {
-        let previousOffset = AppTextSizeSettings.shared.pointOffset
-        AppTextSizeSettings.shared.setPointOffset(2)
-        defer { AppTextSizeSettings.shared.setPointOffset(previousOffset) }
+        let configuration = AppTypography.Configuration(followsSystem: false, pointOffset: 2, category: .large)
 
-        let blocks = DTCoreTextHTMLContentRenderer().render(
+        let blocks = configuration.performAsCurrent { DTCoreTextHTMLContentRenderer().render(
             fragment: "<p>正文预览</p>",
             baseURL: try #require(URL(string: "https://www.nodeseek.com")),
             maxImageWidth: 320
-        )
+        ) }
 
         let font = try #require(renderedFont(in: blocks, matching: "正文预览"))
         #expect(font.pointSize == 19)

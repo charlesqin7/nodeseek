@@ -15,6 +15,6 @@ struct UserContentCellNodeTests {
         let font = try #require(text.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
 
         #expect(font.pointSize == PostListCellStyle.Typography.titleFont.pointSize)
-        #expect(font.pointSize == AppTextSizeSettings.adjustedPointSize(basePointSize: 17))
+        #expect(font.pointSize == AppTypography.listTitleFont().pointSize)
     }
 }

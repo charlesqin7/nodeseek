@@ -228,8 +228,9 @@ extension UserDiscussionsViewController: ASTableDataSource {
         switch displayMode {
         case .content:
             let record = records[indexPath.row]
+            let typography = AppTextSizeSettings.shared.configuration
             return {
-                UserDiscussionCellNode(record: record)
+                typography.performAsCurrent { UserDiscussionCellNode(record: record) }
             }
         case .skeleton:
             return {

@@ -115,7 +115,7 @@ struct SettingsViewControllerTests {
             #expect(categoryPreferencesCell.detailTextLabel?.text == "全部、日常、技术等 16 个")
             #expect(categoryPreferencesCell.accessoryType == .disclosureIndicator)
             #expect(textSizeCell.textLabel?.text == "字体大小")
-            #expect(textSizeCell.detailTextLabel?.text == "标准")
+            #expect(textSizeCell.detailTextLabel?.text == "跟随系统")
             #expect(textSizeCell.accessoryType == .disclosureIndicator)
             #expect(searchEntryCell.textLabel?.text == "首页搜索入口")
             let searchEntrySwitch = try #require(searchEntryCell.accessoryView as? UISwitch)
@@ -242,6 +242,7 @@ struct SettingsViewControllerTests {
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let textSizeSettings = AppTextSizeSettings(userDefaults: defaults, storageKey: "text-size")
+        textSizeSettings.setFollowsSystem(false)
         let viewController = SettingsTextSizeViewController(textSizeSettings: textSizeSettings)
         viewController.loadViewIfNeeded()
         viewController.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
@@ -249,11 +250,11 @@ struct SettingsViewControllerTests {
 
         let adjustmentCell = try #require(viewController.tableView.dataSource?.tableView(
             viewController.tableView,
-            cellForRowAt: IndexPath(row: 0, section: 0)
+            cellForRowAt: IndexPath(row: 1, section: 0)
         ) as? SettingsTextSizeAdjustmentCell)
         let previewCell = try #require(viewController.tableView.dataSource?.tableView(
             viewController.tableView,
-            cellForRowAt: IndexPath(row: 1, section: 0)
+            cellForRowAt: IndexPath(row: 2, section: 0)
         ) as? SettingsTextSizePreviewCell)
 
         adjustmentCell.slider.value = 2
@@ -263,6 +264,35 @@ struct SettingsViewControllerTests {
         #expect(textSizeSettings.pointOffset == 2)
         #expect(previewCell.debugListTitleFont?.pointSize == 19)
         #expect(previewCell.debugCommentBodyFont?.pointSize == 19)
+    }
+
+    @Test func systemFontSwitchDisablesSliderAndRestoresManualValue() throws {
+        let suiteName = "settings-system-size-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppTextSizeSettings(userDefaults: defaults, storageKey: "text-size",
+                                          contentSizeCategory: .extraExtraLarge, observeSystemChanges: false)
+        settings.setPointOffset(2)
+        let controller = SettingsTextSizeViewController(textSizeSettings: settings)
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        controller.view.layoutIfNeeded()
+        let cell = controller.tableView(controller.tableView, cellForRowAt: IndexPath(row: 0, section: 0))
+        let toggle = try #require(cell.accessoryView as? UISwitch)
+        #expect(toggle.isOn)
+        let disabled = try #require(controller.tableView(controller.tableView,
+            cellForRowAt: IndexPath(row: 1, section: 0)) as? SettingsTextSizeAdjustmentCell)
+        #expect(!disabled.slider.isEnabled)
+        toggle.isOn = false
+        toggle.sendActions(for: .valueChanged)
+        let enabled = try #require(controller.tableView(controller.tableView,
+            cellForRowAt: IndexPath(row: 1, section: 0)) as? SettingsTextSizeAdjustmentCell)
+        #expect(enabled.slider.isEnabled)
+        #expect(enabled.slider.value == 2)
+        let preview = try #require(controller.tableView(controller.tableView,
+            cellForRowAt: IndexPath(row: 2, section: 0)) as? SettingsTextSizePreviewCell)
+        #expect(preview.debugListTitleFont?.pointSize == 19)
+        #expect(settings.displayText == "+2")
     }
 
     @Test func selectingTextSizePushesTextSizeSettingsScreen() throws {

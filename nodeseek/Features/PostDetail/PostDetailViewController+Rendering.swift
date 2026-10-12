@@ -17,22 +17,25 @@ extension PostDetailViewController {
         let showsSignature = PostSignatureDisplaySettings.shared.showsSignatures
         let width = availableHeaderContentWidth
         let baseURL = baseURL
+        let typography = AppTextSizeSettings.shared.configuration
         renderQueue.async { [weak self] in
-            let renderedContent = Self.makeRenderedContent(
-                html: html,
-                signatureHTML: signatureHTML,
-                baseURL: baseURL,
-                maxImageWidth: width,
-                showsSignature: showsSignature
-            )
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard self.renderGeneration == generation else { return }
-                guard self.currentHeaderContent?.postID == content.postID,
-                      self.currentHeaderContent?.contentHTML == html,
-                      self.currentHeaderContent?.signatureHTML == signatureHTML else { return }
-                self.configureHeader(content, renderedContent: renderedContent)
-                self.scheduleHeaderReload()
+            typography.performAsCurrent {
+                let renderedContent = Self.makeRenderedContent(
+                    html: html,
+                    signatureHTML: signatureHTML,
+                    baseURL: baseURL,
+                    maxImageWidth: width,
+                    showsSignature: showsSignature
+                )
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    guard self.renderGeneration == generation else { return }
+                    guard self.currentHeaderContent?.postID == content.postID,
+                          self.currentHeaderContent?.contentHTML == html,
+                          self.currentHeaderContent?.signatureHTML == signatureHTML else { return }
+                    self.configureHeader(content, renderedContent: renderedContent)
+                    self.scheduleHeaderReload()
+                }
             }
         }
     }
@@ -282,29 +285,32 @@ extension PostDetailViewController {
         let showsSignature = PostSignatureDisplaySettings.shared.showsSignatures
         let width = availableCommentContentWidth
         let baseURL = baseURL
+        let typography = AppTextSizeSettings.shared.configuration
         renderQueue.async { [weak self] in
-            let renderedContent = Self.makeRenderedContent(
-                html: html,
-                signatureHTML: signatureHTML,
-                baseURL: baseURL,
-                maxImageWidth: width,
-                showsSignature: showsSignature
-            )
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard self.renderGeneration == generation else { return }
-                guard self.commentRenderTokens[commentID] == token else { return }
-                self.commentRenderTokens.removeValue(forKey: commentID)
-                self.commentRenderInFlight.remove(commentID)
-                guard let current = self.comments.first(where: { $0.id == commentID }),
-                      current.contentHTML == html, current.signatureHTML == signatureHTML else { return }
-                self.renderedCommentIDs.insert(commentID)
-                if let renderedContent {
-                    self.commentRenderedCache[commentID] = renderedContent
-                } else {
-                    self.commentRenderedCache.removeValue(forKey: commentID)
+            typography.performAsCurrent {
+                let renderedContent = Self.makeRenderedContent(
+                    html: html,
+                    signatureHTML: signatureHTML,
+                    baseURL: baseURL,
+                    maxImageWidth: width,
+                    showsSignature: showsSignature
+                )
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    guard self.renderGeneration == generation else { return }
+                    guard self.commentRenderTokens[commentID] == token else { return }
+                    self.commentRenderTokens.removeValue(forKey: commentID)
+                    self.commentRenderInFlight.remove(commentID)
+                    guard let current = self.comments.first(where: { $0.id == commentID }),
+                          current.contentHTML == html, current.signatureHTML == signatureHTML else { return }
+                    self.renderedCommentIDs.insert(commentID)
+                    if let renderedContent {
+                        self.commentRenderedCache[commentID] = renderedContent
+                    } else {
+                        self.commentRenderedCache.removeValue(forKey: commentID)
+                    }
+                    self.scheduleCommentReload(commentID: commentID)
                 }
-                self.scheduleCommentReload(commentID: commentID)
             }
         }
     }

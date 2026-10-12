@@ -47,11 +47,13 @@ final class SettingsTextSizeAdjustmentCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func configure(pointOffset: CGFloat) {
+    func configure(pointOffset: CGFloat, isEnabled: Bool = true) {
         let normalized = AppTextSizeSettings.normalizedPointOffset(pointOffset)
         slider.value = Float(normalized)
         valueLabel.text = AppTextSizeSettings.displayText(for: normalized)
         slider.accessibilityValue = valueLabel.text
+        slider.isEnabled = isEnabled
+        valueLabel.textColor = isEnabled ? .secondaryLabel : .tertiaryLabel
     }
 
     private func setupUI() {
@@ -78,6 +80,7 @@ final class SettingsTextSizeAdjustmentCell: UITableViewCell {
     }
 
     @objc private func sliderChanged(_ sender: UISlider) {
+        guard sender.isEnabled else { return }
         let normalized = AppTextSizeSettings.normalizedPointOffset(CGFloat(sender.value))
         sender.value = Float(normalized)
         valueLabel.text = AppTextSizeSettings.displayText(for: normalized)
@@ -114,12 +117,18 @@ final class SettingsTextSizePreviewCell: UITableViewCell {
     }
 
     func configure(pointOffset: CGFloat) {
-        listTitleLabel.font = AppTypography.listTitleFont(pointOffset: pointOffset)
-        listMetadataLabel.font = AppTypography.listMetadataFont(pointOffset: pointOffset)
-        commentAuthorLabel.font = AppTypography.commentAuthorFont(pointOffset: pointOffset)
-        commentMetaLabel.font = AppTypography.commentMetadataFont(pointOffset: pointOffset)
-        commentBodyLabel.font = AppTypography.commentBodyFont(pointOffset: pointOffset)
-        commentActionLabel.font = AppTypography.commentActionFont(pointOffset: pointOffset)
+        configure(configuration: AppTypography.Configuration(followsSystem: false, pointOffset: pointOffset, category: .large))
+    }
+
+    func configure(configuration: AppTypography.Configuration) {
+        configuration.performAsCurrent {
+            listTitleLabel.font = AppTypography.listTitleFont()
+            listMetadataLabel.font = AppTypography.listMetadataFont()
+            commentAuthorLabel.font = AppTypography.commentAuthorFont()
+            commentMetaLabel.font = AppTypography.commentMetadataFont()
+            commentBodyLabel.font = AppTypography.commentBodyFont()
+            commentActionLabel.font = AppTypography.commentActionFont()
+        }
         [
             listTitleLabel,
             listMetadataLabel,
@@ -223,7 +232,7 @@ final class SettingsTextSizePreviewCell: UITableViewCell {
         headerStack.spacing = 3
         headerStack.translatesAutoresizingMaskIntoConstraints = false
 
-        commentBodyLabel.text = "评论正文跟随同一套 App 内字号，预览会随滑块实时变化。"
+        commentBodyLabel.text = "帖子和回复使用同一套字号，预览会随设置实时变化。"
         commentBodyLabel.textColor = .label
         commentBodyLabel.numberOfLines = 0
         commentBodyLabel.translatesAutoresizingMaskIntoConstraints = false

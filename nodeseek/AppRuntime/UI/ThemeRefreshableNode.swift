@@ -37,9 +37,11 @@ extension ThemeRefreshableNode where Self: ASDisplayNode {
 final class ThemeTraitObserver {
     private var isInstalled = false
     private var appliedTraits: UITraitCollection?
+    private var appliedTypography: AppTypography.Configuration?
 
     func recordAppliedTheme() {
         appliedTraits = UITraitCollection.current
+        appliedTypography = AppTypography.currentConfiguration
     }
     private weak var fallbackObserverView: ThemeTraitObserverView?
 
@@ -51,7 +53,8 @@ final class ThemeTraitObserver {
         let view = node.view
         if appliedTraits?.userInterfaceStyle != view.traitCollection.userInterfaceStyle
             || appliedTraits?.displayScale != view.traitCollection.displayScale
-            || appliedTraits?.accessibilityContrast != view.traitCollection.accessibilityContrast {
+            || appliedTraits?.accessibilityContrast != view.traitCollection.accessibilityContrast
+            || appliedTypography != AppTextSizeSettings.shared.configuration {
             view.traitCollection.performAsCurrent { node.refreshAppearanceForCurrentTraits() }
         }
 
