@@ -20,7 +20,7 @@ extension PostDetailViewController: PostDetailViewProtocol {
         // - 无下一页：显示“加载新评论”
         // - 加载中：spinner 显示（showLoadingMoreComments 已处理）
         guard isViewLoaded else { return }
-        guard displayMode == .content else {
+        guard displayMode == .content, pendingCommentAppendID == nil else {
             loadMoreCommentsRefreshButton.isHidden = true
             return
         }
@@ -51,6 +51,7 @@ extension PostDetailViewController: PostDetailViewProtocol {
     }
 
     func hideLoadingMoreComments() {
+        guard pendingCommentAppendID == nil else { return }
         loadMoreCommentsIndicator.stopAnimating()
         lastBatchFetchRequestedCommentCount = nil
         updateLoadMoreCommentsFooter()
@@ -105,6 +106,7 @@ extension PostDetailViewController: PostDetailViewProtocol {
     }
 
     func render(detail: PostDetail) {
+        pendingCommentAppendID = nil
         title = nil
         loginButton.isHidden = true
         showsReplyEntry = detail.isRestricted == false
@@ -169,10 +171,57 @@ extension PostDetailViewController: PostDetailViewProtocol {
             render(detail: detail)
             return
         }
+        guard currentHeaderContent?.postID == detail.id else { return }
+        let requestID = UUID()
+        pendingCommentAppendID = requestID
+        showLoadingMoreComments()
+        prepareCommentAppend(detail: detail, requestID: requestID)
+    }
+
+    private func prepareCommentAppend(detail: PostDetail, requestID: UUID) {
+        let generation = renderGeneration
+        let width = availableCommentContentWidth
+        let showsSignature = PostSignatureDisplaySettings.shared.showsSignatures
+        let baseURL = baseURL
+        renderQueue.async { [weak self] in
+            var cache: [String: [RenderedContentBlock]] = [:]
+            ScrollPerformance.measure("CommentPagePrepare") {
+                for comment in detail.comments {
+                    cache[comment.id] = Self.makeRenderedContent(
+                        html: comment.contentHTML, signatureHTML: comment.signatureHTML,
+                        baseURL: baseURL, maxImageWidth: width, showsSignature: showsSignature
+                    )
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self, self.pendingCommentAppendID == requestID,
+                      self.currentHeaderContent?.postID == detail.id else { return }
+                guard self.renderGeneration == generation,
+                      abs(self.availableCommentContentWidth - width) < 0.5 else {
+                    // 字号或签名设置变化后重新准备；刷新/切页会取消 requestID。
+                    self.prepareCommentAppend(detail: detail, requestID: requestID)
+                    return
+                }
+                self.pendingCommentAppendID = nil
+                for comment in detail.comments {
+                    self.commentRenderedCache[comment.id] = cache[comment.id]
+                    self.renderedCommentIDs.insert(comment.id)
+                }
+                self.insertPreparedCommentPage(detail: detail)
+                self.hideLoadingMoreComments()
+            }
+        }
+    }
+
+    private func insertPreparedCommentPage(detail: PostDetail) {
+        guard hasRenderedDetailContent else {
+            render(detail: detail)
+            return
+        }
 
         let oldCommentCount = comments.count
         let hasHeader = currentHeaderContent != nil
-        let commentRowOffset = hasHeader ? 2 : 0
+        let commentRowOffset = (hasHeader ? 2 : 0) + (hasHeader && shouldShowInitialPageHint ? 1 : 0)
         currentPage = max(currentPage, detail.page)
         pagination = detail.pagination
         comments.append(contentsOf: detail.comments)
@@ -180,13 +229,14 @@ extension PostDetailViewController: PostDetailViewProtocol {
         var insertedRows: [IndexPath] = []
         if hasHeader, oldCommentCount == 0, comments.isEmpty == false {
             // 初次有评论时，需要补上 header 与评论之间的分割行。
-            insertedRows.append(IndexPath(row: 1, section: 0))
+            insertedRows.append(IndexPath(row: commentRowOffset - 1, section: 0))
         }
         insertedRows.append(contentsOf: (oldCommentCount..<comments.count).map { commentIndex in
             IndexPath(row: commentRowOffset + commentIndex, section: 0)
         })
 
         if insertedRows.isEmpty {
+            updateLoadMoreCommentsFooter()
             return
         }
 
@@ -194,12 +244,12 @@ extension PostDetailViewController: PostDetailViewProtocol {
             self?.tableNode.insertRows(at: insertedRows, with: .none)
         })
         AppLog.debug(.postDetail, "详情评论局部插入完成: inserted=\(insertedRows.count), totalComments=\(comments.count)")
-        preheatCommentRender(for: detail.comments)
         updateLoadMoreCommentsFooter()
         updateReplyButtonVisibility()
     }
 
     func refreshCurrentCommentPage(detail: PostDetail) {
+        pendingCommentAppendID = nil
         guard hasRenderedDetailContent else {
             render(detail: detail)
             return
@@ -216,7 +266,7 @@ extension PostDetailViewController: PostDetailViewProtocol {
         let commonCount = min(oldComments.count, newComments.count)
         let hasHeader = currentHeaderContent != nil
         let oldTotalCount = comments.count
-        let commentRowOffset = hasHeader ? 2 : 0
+        let commentRowOffset = (hasHeader ? 2 : 0) + (hasHeader && shouldShowInitialPageHint ? 1 : 0)
         let reloadRows = (0..<commonCount).compactMap { offset -> IndexPath? in
             let oldComment = oldComments[offset]
             let newComment = newComments[offset]
@@ -601,6 +651,7 @@ extension PostDetailViewController: PostDetailViewProtocol {
     }
 
     func renderLoginRequired(message: String) {
+        pendingCommentAppendID = nil
         cancelPendingInitialContentReveal()
         title = nil
         loginButton.isHidden = false

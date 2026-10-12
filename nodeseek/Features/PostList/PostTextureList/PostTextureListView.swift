@@ -211,6 +211,7 @@ final class PostTextureListView: UIView {
         PostSummaryCellNode.prewarmSymbolImages()
         tableNode.dataSource = self
         tableNode.delegate = self
+        AvatarRenderScheduler.shared.track(tableNode.view)
         tableNode.leadingScreensForBatching = leadingScreensForBatching
         tableNode.view.separatorStyle = .singleLine
         tableNode.view.showsVerticalScrollIndicator = true
@@ -326,8 +327,11 @@ extension PostTextureListView: ASTableDataSource {
         switch displayMode {
         case .content:
             let item = items[indexPath.row]
+            let traits = tableNode.view.traitCollection
             return {
-                PostSummaryCellNode(item: item)
+                var node: PostSummaryCellNode!
+                traits.performAsCurrent { node = PostSummaryCellNode(item: item) }
+                return node
             }
         case .skeleton:
             return {

@@ -32,6 +32,7 @@ final class RecentVisitedPostsViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        AvatarRenderScheduler.shared.track(tableView)
         view.backgroundColor = .systemBackground
         tableView.backgroundColor = .systemBackground
         tableView.register(RecentVisitedPostCell.self, forCellReuseIdentifier: Self.cellIdentifier)

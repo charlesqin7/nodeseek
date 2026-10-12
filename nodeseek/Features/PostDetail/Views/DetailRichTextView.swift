@@ -29,6 +29,14 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
     private var layoutInvalidatedHandler: (() -> Void)?
     private var attachmentLayoutUpdatedHandler: ((URL, CGSize, CGSize) -> Void)?
     private var lastLayoutWidth: CGFloat = 0
+    private var cachedMeasurement: (width: CGFloat, size: CGSize)?
+    #if DEBUG
+    private(set) var measurementCount = 0
+    #endif
+
+    private func invalidateMeasurement() {
+        cachedMeasurement = nil
+    }
     private let diagnosticID = String(UUID().uuidString.prefix(8))
     private var pendingRelayoutWorkItem: DispatchWorkItem?
     private let stickerAspectRatioProvider: any StickerAspectRatioProviding = StickerAspectRatioCache.shared
@@ -113,6 +121,7 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
         )
         removeAllCustomViews()
         removeAllCustomViewsForLinks()
+        invalidateMeasurement()
         layouter = nil
         relayoutText()
         invalidateIntrinsicContentSize()
@@ -138,6 +147,7 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
         if width > 0, abs(width - lastLayoutWidth) > 0.5 {
             lastLayoutWidth = width
             logDiagnostics("layoutSubviews widthChanged width=\(Self.numberString(width)) bounds=\(Self.string(from: bounds.size))")
+            invalidateMeasurement()
             layouter = nil
             relayoutText()
             invalidateIntrinsicContentSize()
@@ -168,6 +178,7 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
         attributedString = snapshot
         removeAllCustomViews()
         removeAllCustomViewsForLinks()
+        invalidateMeasurement()
         layouter = nil
         relayoutText()
         invalidateIntrinsicContentSize()
@@ -382,6 +393,7 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
             )
             return
         }
+        attachmentLayoutUpdatedHandler?(url, imageSize, update.displaySize)
         guard update.requiresRelayout else {
             logDiagnostics(
                 "imageLoaded metadataOnly url=\(url.absoluteString) imageSize=\(Self.string(from: imageSize)) display=\(Self.string(from: update.displaySize))"
@@ -391,7 +403,6 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
         logDiagnostics(
             "imageLoaded updated url=\(url.absoluteString) imageSize=\(Self.string(from: imageSize)) display=\(Self.string(from: update.displaySize))"
         )
-        attachmentLayoutUpdatedHandler?(url, imageSize, update.displaySize)
         scheduleDebouncedRelayout(reason: "imageLoaded")
     }
 
@@ -401,6 +412,7 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
             guard let self else { return }
             self.removeAllCustomViews()
             self.removeAllCustomViewsForLinks()
+            self.invalidateMeasurement()
             self.layouter = nil
             self.relayoutText()
             self.invalidateIntrinsicContentSize()
@@ -455,7 +467,7 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
                     attachment.originalSize = originalSize
                     updatedAttachment = Self.merging(
                         updatedAttachment,
-                        with: ImageAttachmentUpdate(displaySize: attachment.displaySize, requiresRelayout: true)
+                        with: ImageAttachmentUpdate(displaySize: attachment.displaySize, requiresRelayout: false)
                     )
                 }
                 return
@@ -467,6 +479,11 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
             )
             let displaySize = presentation.size
             if isSticker == false, attachment.displaySize == displaySize {
+                if attachment.originalSize != originalSize {
+                    attachment.originalSize = originalSize
+                    updatedAttachment = Self.merging(updatedAttachment,
+                        with: ImageAttachmentUpdate(displaySize: displaySize, requiresRelayout: false))
+                }
                 logDiagnostics(
                     "normal attachment fixed size unchanged url=\(url.absoluteString) imageSize=\(Self.string(from: originalSize)) display=\(Self.string(from: displaySize))"
                 )
@@ -725,18 +742,27 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
             return CGSize(width: UIView.noIntrinsicMetric, height: 1)
         }
 
+        if let cachedMeasurement, abs(cachedMeasurement.width - width) < 0.5 {
+            return cachedMeasurement.size
+        }
+        #if DEBUG
+        measurementCount += 1
+        #endif
         if abs(bounds.width - width) > 0.5 {
             var adjustedBounds = bounds
             adjustedBounds.size.width = width
             bounds = adjustedBounds
         }
+        lastLayoutWidth = width
         layoutFrame = nil
-        _ = layoutFrame
+        ScrollPerformance.measure("RichTextViewLayout") { _ = layoutFrame }
         let size = super.intrinsicContentSize
         logDiagnostics(
             "richTextSize width=\(Self.numberString(width)) result=\(Self.string(from: size)) bounds=\(Self.string(from: bounds.size)) attachments=\(attachmentDiagnostics())"
         )
-        return CGSize(width: UIView.noIntrinsicMetric, height: ceil(max(size.height, 1)))
+        let measured = CGSize(width: UIView.noIntrinsicMetric, height: ceil(max(size.height, 1)))
+        cachedMeasurement = (width, measured)
+        return measured
     }
 
     private var displayScale: CGFloat {
@@ -756,9 +782,9 @@ final class DetailRichTextView: DTAttributedTextContentView, DTAttributedTextCon
         DetailAttachmentAttributes.hasClass("sticker", in: attachment.attributes) || isStickerImageURL(contentURL)
     }
 
-    private func logDiagnostics(_ message: String) {
+    private func logDiagnostics(_ message: @autoclosure () -> String) {
         guard NodeSeekDebugConfig.enableDetailRenderDiagnostics else { return }
-        AppLog.info(.rendering, "[\(diagnosticID)] \(message)")
+        AppLog.info(.rendering, "[\(diagnosticID)] \(message())")
     }
 
     private func attachmentDiagnostics() -> String {

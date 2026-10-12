@@ -108,6 +108,7 @@ final class PostSummaryCellNode: ASCellNode, ThemeRefreshableNode {
     }
 
     func applyCurrentTheme() {
+        themeTraitObserver.recordAppliedTheme()
         configureText()
     }
 

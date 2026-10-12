@@ -57,6 +57,7 @@ final class UserDiscussionsViewController: UIViewController {
         view.backgroundColor = .systemBackground
         tableNode.dataSource = self
         tableNode.delegate = self
+        AvatarRenderScheduler.shared.track(tableNode.view)
         tableNode.leadingScreensForBatching = 2
         tableNode.view.separatorStyle = .singleLine
         tableNode.view.tableFooterView = footerView

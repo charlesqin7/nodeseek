@@ -147,6 +147,7 @@ final class NotificationViewController: UIViewController {
         tableView.estimatedRowHeight = 82
         tableView.dataSource = self
         tableView.delegate = self
+        AvatarRenderScheduler.shared.track(tableView)
         tableView.register(NotificationMentionCell.self, forCellReuseIdentifier: NotificationMentionCell.reuseIdentifier)
         tableView.register(NotificationMessageCell.self, forCellReuseIdentifier: NotificationMessageCell.reuseIdentifier)
         refreshControl.addTarget(self, action: #selector(refreshTriggered), for: .valueChanged)

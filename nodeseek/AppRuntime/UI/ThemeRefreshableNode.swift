@@ -36,6 +36,11 @@ extension ThemeRefreshableNode where Self: ASDisplayNode {
 /// 监听 view 的 trait 切换并触发 Node 刷新。
 final class ThemeTraitObserver {
     private var isInstalled = false
+    private var appliedTraits: UITraitCollection?
+
+    func recordAppliedTheme() {
+        appliedTraits = UITraitCollection.current
+    }
     private weak var fallbackObserverView: ThemeTraitObserverView?
 
     func install<Node>(on node: Node) where Node: ASDisplayNode, Node: ThemeRefreshableNode {
@@ -44,7 +49,11 @@ final class ThemeTraitObserver {
         isInstalled = true
 
         let view = node.view
-        node.refreshAppearanceForCurrentTraits()
+        if appliedTraits?.userInterfaceStyle != view.traitCollection.userInterfaceStyle
+            || appliedTraits?.displayScale != view.traitCollection.displayScale
+            || appliedTraits?.accessibilityContrast != view.traitCollection.accessibilityContrast {
+            view.traitCollection.performAsCurrent { node.refreshAppearanceForCurrentTraits() }
+        }
 
         if #available(iOS 17.0, *) {
             view.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak node] (view: UIView, previousTraitCollection: UITraitCollection) in

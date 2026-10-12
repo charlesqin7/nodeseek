@@ -276,6 +276,7 @@ final class CommentCellNode: ASCellNode, ThemeRefreshableNode {
     }
 
     func applyCurrentTheme() {
+        themeTraitObserver.recordAppliedTheme()
         backgroundColor = .systemBackground
         separatorNode.backgroundColor = .separator
         authorBadgeNodes.forEach { $0.applyCurrentTheme() }

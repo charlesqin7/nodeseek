@@ -28,7 +28,9 @@ extension PostDetailViewController {
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard self.renderGeneration == generation else { return }
-                guard self.currentHeaderContent?.postID == content.postID else { return }
+                guard self.currentHeaderContent?.postID == content.postID,
+                      self.currentHeaderContent?.contentHTML == html,
+                      self.currentHeaderContent?.signatureHTML == signatureHTML else { return }
                 self.configureHeader(content, renderedContent: renderedContent)
                 self.scheduleHeaderReload()
             }
@@ -236,21 +238,28 @@ extension PostDetailViewController {
         return max(contentWidth, 1)
     }
 
-    func scheduleAttachmentLayoutRefresh() {
-        attachmentLayoutRefreshWorkItem?.cancel()
+    func scheduleAttachmentLayoutRefresh(for id: ContentRowID, generation: Int) {
+        guard generation == renderGeneration, displayMode == .content else { return }
+        pendingAttachmentLayoutIDs.insert(id)
+        guard attachmentLayoutRefreshWorkItem == nil else { return }
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self, self.isViewLoaded else { return }
-            if NodeSeekDebugConfig.enableDetailRenderDiagnostics {
-                let visibleRows = self.tableNode.indexPathsForVisibleRows().map { "\($0.section):\($0.row)" }.joined(separator: ",")
-                AppLog.info(.rendering, "scheduleAttachmentLayoutRefresh fire visible=\(visibleRows) rows=\(self.tableNode(self.tableNode, numberOfRowsInSection: 0))")
+            guard let self else { return }
+            self.attachmentLayoutRefreshWorkItem = nil
+            guard self.isViewLoaded else { return }
+            let ids = self.pendingAttachmentLayoutIDs
+            self.pendingAttachmentLayoutIDs.removeAll()
+            guard generation == self.renderGeneration else { return }
+            ScrollPerformance.measure("AttachmentRowsLayout") {
+                for id in ids {
+                    guard let path = self.indexPath(for: id),
+                          let node = self.tableNode.nodeForRow(at: path) else { continue }
+                    // 子节点已更新附件尺寸；只失效其所属行，复用已加载的视图和图片。
+                    node.setNeedsLayout()
+                }
+                self.tableNode.performBatch(animated: false, updates: {})
             }
-            self.tableNode.relayoutItems()
-            self.tableNode.performBatch(animated: false, updates: {})
         }
         attachmentLayoutRefreshWorkItem = workItem
-        if NodeSeekDebugConfig.enableDetailRenderDiagnostics {
-            AppLog.info(.rendering, "scheduleAttachmentLayoutRefresh queued")
-        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: workItem)
     }
 
@@ -264,6 +273,8 @@ extension PostDetailViewController {
         let commentID = comment.id
         guard renderedCommentIDs.contains(commentID) == false else { return }
         guard commentRenderInFlight.insert(commentID).inserted else { return }
+        let token = UUID()
+        commentRenderTokens[commentID] = token
 
         let generation = renderGeneration
         let html = comment.contentHTML
@@ -282,7 +293,11 @@ extension PostDetailViewController {
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard self.renderGeneration == generation else { return }
+                guard self.commentRenderTokens[commentID] == token else { return }
+                self.commentRenderTokens.removeValue(forKey: commentID)
                 self.commentRenderInFlight.remove(commentID)
+                guard let current = self.comments.first(where: { $0.id == commentID }),
+                      current.contentHTML == html, current.signatureHTML == signatureHTML else { return }
                 self.renderedCommentIDs.insert(commentID)
                 if let renderedContent {
                     self.commentRenderedCache[commentID] = renderedContent
