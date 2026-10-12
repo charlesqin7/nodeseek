@@ -122,6 +122,19 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
     }
 
     func tableNode(_ tableNode: ASTableNode, nodeBlockForRowAt indexPath: IndexPath) -> ASCellNodeBlock {
+        let traits = tableNode.view.traitCollection
+        let makeNode = makeNodeBlock(at: indexPath)
+        let typography = AppTextSizeSettings.shared.configuration
+        return {
+            typography.performAsCurrent {
+                var node: ASCellNode!
+                traits.performAsCurrent { node = makeNode() }
+                return node
+            }
+        }
+    }
+
+    private func makeNodeBlock(at indexPath: IndexPath) -> ASCellNodeBlock {
         if displayMode == .skeleton {
             let kind: PostDetailSkeletonCellNode.Kind = indexPath.row == 0 ? .header : .comment
             return {
@@ -141,6 +154,8 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
             }
             let renderedContent = headerRenderedContent
             let showsWarning = authorRiskWarningPostID == header.postID
+            let showsReplyActions = showsReplyEntry
+            let generation = renderGeneration
             let imageSizeProvider = makeCurrentImageSizeProvider()
             return { [weak self] in
                 PostBodyCellNode(
@@ -179,17 +194,17 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
                     onContentCopyTapped: { content in
                         self?.presentPostBodyCopySheet(for: content)
                     },
-                    showsReplyActions: self?.showsReplyEntry == true,
+                    showsReplyActions: showsReplyActions,
                     showsAuthorRiskWarning: showsWarning,
                     onTextLayoutInvalidated: {
-                        self?.scheduleAttachmentLayoutRefresh()
+                        self?.scheduleAttachmentLayoutRefresh(for: .header(header.postID), generation: generation)
                     },
                     imageSizeProvider: imageSizeProvider,
                     onImageSizeResolved: { url, size in
                         self?.cacheDetailImageSize(size, for: url)
                     },
                     onImageHeightReduced: {
-                        self?.scheduleHeaderReload()
+                        self?.scheduleAttachmentLayoutRefresh(for: .header(header.postID), generation: generation)
                     }
                 )
             }
@@ -214,6 +229,7 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
             }
 
             let comment = comments[commentIndex]
+            let generation = renderGeneration
             let renderedBody = commentRenderedCache[comment.id]
             let imageSizeProvider = makeCurrentImageSizeProvider()
             return { [weak self] in
@@ -251,14 +267,14 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
                         self?.handleQuote(comment)
                     },
                     onTextLayoutInvalidated: {
-                        self?.scheduleAttachmentLayoutRefresh()
+                        self?.scheduleAttachmentLayoutRefresh(for: .comment(comment.id), generation: generation)
                     },
                     imageSizeProvider: imageSizeProvider,
                     onImageSizeResolved: { url, size in
                         self?.cacheDetailImageSize(size, for: url)
                     },
                     onImageHeightReduced: {
-                        self?.scheduleCommentReload(commentID: comment.id)
+                        self?.scheduleAttachmentLayoutRefresh(for: .comment(comment.id), generation: generation)
                     }
                 )
             }
@@ -316,6 +332,7 @@ extension PostDetailViewController: ASTableDataSource, ASTableDelegate {
     }
 
     private func canRequestCommentBatchFetch() -> Bool {
+        guard pendingCommentAppendID == nil else { return false }
         guard displayMode == .content else { return false }
         guard pagination?.nextPage != nil else { return false }
         guard !comments.isEmpty else { return false }

@@ -31,9 +31,9 @@ final class RecentVisitedPostCell: UITableViewCell {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.font = .preferredFont(forTextStyle: .body)
+        label.font = AppTypography.listTitleFont()
         label.textColor = .label
-        label.numberOfLines = 2
+        label.numberOfLines = 0
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -41,9 +41,9 @@ final class RecentVisitedPostCell: UITableViewCell {
 
     private let visitedLabel: UILabel = {
         let label = UILabel()
-        label.font = .preferredFont(forTextStyle: .footnote)
+        label.font = AppTypography.listMetadataFont()
         label.textColor = .secondaryLabel
-        label.numberOfLines = 1
+        label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -90,6 +90,8 @@ final class RecentVisitedPostCell: UITableViewCell {
     }
 
     func configure(record: VisitedPostRecord, visitedText: String) {
+        titleLabel.font = AppTypography.listTitleFont()
+        visitedLabel.font = AppTypography.listMetadataFont()
         representedPostID = record.postID
         titleLabel.text = record.title
         visitedLabel.text = visitedText

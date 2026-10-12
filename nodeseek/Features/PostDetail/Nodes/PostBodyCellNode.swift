@@ -229,6 +229,7 @@ final class PostBodyCellNode: ASCellNode, ThemeRefreshableNode {
     }
 
     func applyCurrentTheme() {
+        themeTraitObserver.recordAppliedTheme()
         backgroundColor = .systemBackground
         authorRiskWarningNode?.applyCurrentTheme()
         authorBadgeNodes.forEach { $0.applyCurrentTheme() }
@@ -719,6 +720,8 @@ final class DetailRichTextNode: ASDisplayNode {
 
     private let attributedText: NSMutableAttributedString
     private let attributedTextLock = NSLock()
+    private var attachmentDisplaySizes: [URL: CGSize] = [:]
+    private var resolvedImageSizes: [URL: CGSize] = [:]
     private let onImageTapped: ([URL], Int) -> Void
     private let onLinkTapped: (URL) -> Void
     private let onSignatureLinkCandidatesTapped: ([DetailLinkCandidate]) -> Void
@@ -792,6 +795,7 @@ final class DetailRichTextNode: ASDisplayNode {
         }
 
         var didUpdate = false
+        var sizeChanged = false
         attributedTextLock.lock()
         attributedText.enumerateAttribute(
             .attachment,
@@ -802,9 +806,16 @@ final class DetailRichTextNode: ASDisplayNode {
                 return
             }
 
+            let previousSize = attachmentDisplaySizes[url] ?? attachment.displaySize
+            didUpdate = true
+            sizeChanged = sizeChanged || abs(previousSize.width - displaySize.width) >= 0.5
+                || abs(previousSize.height - displaySize.height) >= 0.5
             attachment.originalSize = originalSize
             attachment.displaySize = displaySize
-            didUpdate = true
+        }
+        if didUpdate {
+            attachmentDisplaySizes[url] = displaySize
+            resolvedImageSizes[url] = originalSize
         }
         attributedTextLock.unlock()
 
@@ -812,8 +823,10 @@ final class DetailRichTextNode: ASDisplayNode {
             logDiagnostics(
                 "node attachment updated url=\(url.absoluteString) original=\(Self.string(from: originalSize)) display=\(Self.string(from: displaySize))"
             )
-            invalidateCalculatedLayout()
-            setNeedsLayout()
+            if sizeChanged {
+                invalidateCalculatedLayout()
+                setNeedsLayout()
+            }
         } else {
             logDiagnostics(
                 "node attachment update missed url=\(url.absoluteString) original=\(Self.string(from: originalSize)) display=\(Self.string(from: displaySize)) attachments=\(Self.attachmentDiagnostics(in: attributedText))"
@@ -828,8 +841,13 @@ final class DetailRichTextNode: ASDisplayNode {
         Self.applyCachedAttachmentSizes(
             to: attributedText,
             maxWidth: width,
-            imageSizeProvider: imageSizeProvider
+            imageSizeProvider: { self.resolvedImageSizes[$0] ?? self.imageSizeProvider($0) }
         )
+        attributedText.enumerateAttribute(.attachment, in: NSRange(location: 0, length: attributedText.length)) { value, _, _ in
+            if let attachment = value as? DTTextAttachment, let url = attachment.contentURL {
+                attachmentDisplaySizes[url] = attachment.displaySize
+            }
+        }
         let measuredText = NSAttributedString(attributedString: attributedText)
         attributedTextLock.unlock()
 
@@ -837,14 +855,16 @@ final class DetailRichTextNode: ASDisplayNode {
             return .zero
         }
 
-        let boundingRect = measuredText.boundingRect(
+        let dtCoreTextHeight = ScrollPerformance.measure("RichTextNodeMeasure") {
+            Self.dtCoreTextHeight(for: measuredText, width: width)
+        }
+        let usesBoundingHeightFallback = Self.requiresBoundingHeightFallback(in: measuredText)
+        let needsFallback = usesBoundingHeightFallback || dtCoreTextHeight == nil
+        let boundingHeight: CGFloat = needsFallback ? ceil(max(measuredText.boundingRect(
             with: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             context: nil
-        )
-        let boundingHeight = ceil(max(boundingRect.height, 1))
-        let dtCoreTextHeight = Self.dtCoreTextHeight(for: measuredText, width: width)
-        let usesBoundingHeightFallback = Self.requiresBoundingHeightFallback(in: measuredText)
+        ).height, 1)) : 0
         let height = Self.resolvedMeasuredHeight(
             dtCoreTextHeight: dtCoreTextHeight,
             boundingHeight: boundingHeight,
@@ -969,9 +989,9 @@ final class DetailRichTextNode: ASDisplayNode {
         return ceil(height)
     }
 
-    private func logDiagnostics(_ message: String) {
+    private func logDiagnostics(_ message: @autoclosure () -> String) {
         guard NodeSeekDebugConfig.enableDetailRenderDiagnostics else { return }
-        AppLog.info(.rendering, "[\(diagnosticID)] \(message)")
+        AppLog.info(.rendering, "[\(diagnosticID)] \(message())")
     }
 
     nonisolated private static func attachmentDiagnostics(in attributedText: NSAttributedString) -> String {

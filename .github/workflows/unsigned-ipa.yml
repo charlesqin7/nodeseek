@@ -1,0 +1,113 @@
+name: Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/scroll-performance-ipa
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Typography and scroll regression tests
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Run related iOS tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; r=sorted((r for r in d if "SimRuntime.iOS-" in r), key=lambda r: tuple(map(int,r.split("iOS-")[1].split("-"))), reverse=True); print(next(v["udid"] for r in r for v in d[r] if "iPhone" in v["name"] and v.get("isAvailable",False)))')
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcodebuild test -project nodeseek.xcodeproj -scheme nodeseek \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -parallel-testing-enabled NO \
+            -resultBundlePath build/regression.xcresult \
+            -only-testing:nodeseekTests/AppTextSizeSettingsTests \
+            -only-testing:nodeseekTests/AppTextSizeRenderingTests \
+            -only-testing:nodeseekTests/SettingsViewControllerTests \
+            -only-testing:nodeseekTests/PostSummaryCellNodeTests \
+            -only-testing:nodeseekTests/PostDetailViewControllerTests \
+            -only-testing:nodeseekTests/UserContentCellNodeTests \
+            -only-testing:nodeseekTests/ScrollRenderingPerformanceTests \
+            -only-testing:nodeseekTests/AvatarDataPipelineTests \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee build/tests.log
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typography-regression-results
+          path: |
+            build/tests.log
+            build/regression.xcresult
+          retention-days: 14
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Archive without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild -version | tee build/toolchain.txt
+          git rev-parse HEAD > build/commit.txt
+          xcodebuild archive \
+            -project nodeseek.xcodeproj \
+            -scheme nodeseek \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/nodeseek.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            CODE_SIGN_ENTITLEMENTS='' \
+            DEVELOPMENT_TEAM='' \
+            PROVISIONING_PROFILE_SPECIFIER='' \
+            2>&1 | tee build/archive.log
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d build/nodeseek.xcarchive/Products/Applications/nodeseek.app
+          mkdir -p build/package/Payload
+          ditto build/nodeseek.xcarchive/Products/Applications/nodeseek.app build/package/Payload/nodeseek.app
+          cd build/package
+          ditto -c -k --keepParent Payload ../nodeseek-unsigned.ipa
+          cd ..
+          shasum -a 256 nodeseek-unsigned.ipa > SHA256SUMS.txt
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodeseek-unsigned-ipa
+          path: |
+            build/nodeseek-unsigned.ipa
+            build/commit.txt
+            build/toolchain.txt
+            build/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa-build-log
+          path: build/archive.log
+          if-no-files-found: ignore
+          retention-days: 14

@@ -56,6 +56,7 @@ final class UserCollectionsViewController: UIViewController {
         view.backgroundColor = .systemBackground
         tableNode.dataSource = self
         tableNode.delegate = self
+        AvatarRenderScheduler.shared.track(tableNode.view)
         tableNode.leadingScreensForBatching = 2
         tableNode.view.separatorStyle = .singleLine
         tableNode.view.tableFooterView = footerView
@@ -222,8 +223,9 @@ extension UserCollectionsViewController: ASTableDataSource {
         switch displayMode {
         case .content:
             let record = records[indexPath.row]
+            let typography = AppTextSizeSettings.shared.configuration
             return {
-                UserCollectionCellNode(record: record)
+                typography.performAsCurrent { UserCollectionCellNode(record: record) }
             }
         case .skeleton:
             return {

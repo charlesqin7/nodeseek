@@ -205,8 +205,16 @@ class PostDetailViewController: UIViewController {
     var commentRenderedCache: [String: [RenderedContentBlock]] = [:]
     var renderedCommentIDs: Set<String> = []
     var commentRenderInFlight: Set<String> = []
+    var commentRenderTokens: [String: UUID] = [:]
     var detailImageSizeCache: [URL: CGSize] = [:]
-    var renderGeneration: Int = 0
+    var renderGeneration: Int = 0 {
+        didSet {
+            commentRenderTokens.removeAll()
+            attachmentLayoutRefreshWorkItem?.cancel()
+            attachmentLayoutRefreshWorkItem = nil
+            pendingAttachmentLayoutIDs.removeAll()
+        }
+    }
     let sourcePostURL: URL?
     var photoBrowserPresenter: DetailPhotoBrowserPresenter?
     var attachmentLayoutRefreshWorkItem: DispatchWorkItem?
@@ -214,7 +222,17 @@ class PostDetailViewController: UIViewController {
     var initialContentRevealWorkItem: DispatchWorkItem?
     var pendingInitialContentRevealGeneration: Int?
     var pendingInitialAnchorID: String?
-    var pendingReloadIndexPaths: Set<IndexPath> = []
+    enum ContentRowID: Hashable {
+        case header(String)
+        case comment(String)
+    }
+    var pendingReloadIDs: Set<ContentRowID> = []
+    var pendingAttachmentLayoutIDs: Set<ContentRowID> = []
+    var pendingCommentAppendID: UUID?
+    var pendingReloadIndexPaths: Set<IndexPath> {
+        get { Set(pendingReloadIDs.compactMap(indexPath(for:))) }
+        set { pendingReloadIDs = Set(newValue.compactMap(contentRowID(at:))) }
+    }
     var displayMode: DisplayMode = .skeleton
     var hasRenderedDetailContent = false
     var showsReplyEntry = false
@@ -670,6 +688,8 @@ class PostDetailViewController: UIViewController {
         view.backgroundColor = .systemBackground
         tableNode.dataSource = self
         tableNode.delegate = self
+        tableNode.automaticallyAdjustsContentOffset = true
+        AvatarRenderScheduler.shared.track(tableNode.view)
         tableNode.leadingScreensForBatching = leadingScreensForBatching
         tableNode.view.backgroundColor = .systemBackground
         tableNode.view.separatorStyle = .none
@@ -958,6 +978,30 @@ class PostDetailViewController: UIViewController {
     }
     #endif
 
+    func contentRowID(at path: IndexPath) -> ContentRowID? {
+        let rows = detailRows
+        guard path.section == 0, rows.indices.contains(path.row) else { return nil }
+        switch rows[path.row] {
+        case .header: return currentHeaderContent.map { .header($0.postID) }
+        case .comment(let index): return .comment(comments[index].id)
+        default: return nil
+        }
+    }
+
+    func indexPath(for id: ContentRowID) -> IndexPath? {
+        let rows = detailRows
+        for (row, value) in rows.enumerated() {
+            switch (id, value) {
+            case (.header(let postID), .header) where currentHeaderContent?.postID == postID:
+                return IndexPath(row: row, section: 0)
+            case (.comment(let commentID), .comment(let index)) where comments[index].id == commentID:
+                return IndexPath(row: row, section: 0)
+            default: continue
+            }
+        }
+        return nil
+    }
+
     func scheduleHeaderReload() {
         guard currentHeaderContent != nil else { return }
         guard displayMode == .content else { return }
@@ -982,7 +1026,7 @@ class PostDetailViewController: UIViewController {
         let validIndexPaths = indexPaths.filter { $0.section == 0 && $0.row >= 0 && $0.row < rowCount }
         guard validIndexPaths.isEmpty == false else { return }
 
-        pendingReloadIndexPaths.formUnion(validIndexPaths)
+        pendingReloadIDs.formUnion(validIndexPaths.compactMap(contentRowID(at:)))
         tableReloadWorkItem?.cancel()
 
         let workItem = DispatchWorkItem { [weak self] in
@@ -992,7 +1036,9 @@ class PostDetailViewController: UIViewController {
             }
             self.pendingReloadIndexPaths.removeAll()
             guard reloadIndexPaths.isEmpty == false else { return }
-            self.tableNode.reloadRows(at: reloadIndexPaths, with: .none)
+            ScrollPerformance.measure("DetailRowsReload") {
+                self.tableNode.reloadRows(at: reloadIndexPaths, with: .none)
+            }
         }
         tableReloadWorkItem = workItem
         DispatchQueue.main.async(execute: workItem)

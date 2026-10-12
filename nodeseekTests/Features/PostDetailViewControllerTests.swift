@@ -17,6 +17,61 @@ import WebKit
 @Suite(.serialized)
 @MainActor
 struct PostDetailViewControllerTests {
+    @Test func queuedRowReloadTracksCommentIdentityWhenRowsMove() {
+        let controller = PostDetailViewController(presenter: SpyPostDetailPresenter())
+        controller.loadViewIfNeeded()
+        controller.displayMode = .content
+        let first = Comment(id: "one", authorName: "a", avatarURL: nil, floorText: nil,
+                            createdAtText: nil, contentHTML: "first")
+        let second = Comment(id: "two", authorName: "b", avatarURL: nil, floorText: nil,
+                             createdAtText: nil, contentHTML: "second")
+        controller.comments = [first, second]
+        controller.scheduleRowsReload([IndexPath(row: 1, section: 0)])
+        controller.comments = [second, first]
+        #expect(controller.pendingReloadIndexPaths == [IndexPath(row: 0, section: 0)])
+        controller.tableReloadWorkItem?.cancel()
+    }
+
+    @Test func attachmentRefreshCoalescesByIdentityAndRejectsOldGeneration() {
+        let controller = PostDetailViewController(presenter: SpyPostDetailPresenter())
+        controller.loadViewIfNeeded()
+        controller.displayMode = .content
+        let generation = controller.renderGeneration
+        controller.scheduleAttachmentLayoutRefresh(for: .comment("one"), generation: generation)
+        controller.scheduleAttachmentLayoutRefresh(for: .comment("one"), generation: generation)
+        #expect(controller.pendingAttachmentLayoutIDs == [.comment("one")])
+        controller.renderGeneration += 1
+        controller.scheduleAttachmentLayoutRefresh(for: .comment("old"), generation: generation)
+        #expect(controller.pendingAttachmentLayoutIDs.isEmpty)
+        #expect(controller.attachmentLayoutRefreshWorkItem == nil)
+    }
+
+    @Test func refreshDiscardsPendingPreparedAppend() async {
+        let controller = PostDetailViewController(presenter: SpyPostDetailPresenter())
+        controller.loadViewIfNeeded()
+        let first = PostDetail(id: "post", title: "test", authorName: "author", avatarURL: nil,
+                               metadataText: "", contentHTML: "<p>body</p>", comments: [], page: 1)
+        controller.render(detail: first)
+        await waitForDetailContent(in: controller, expectedRowCount: 1)
+        let next = PostDetail(id: "post", title: "test", authorName: "author", avatarURL: nil,
+                              metadataText: "", contentHTML: "<p>body</p>", comments: [
+                                Comment(id: "stale", authorName: "b", avatarURL: nil, floorText: nil,
+                                        createdAtText: nil, contentHTML: "<p>stale</p>")
+                              ], page: 2)
+        controller.appendCommentPage(detail: next)
+        #expect(controller.pendingCommentAppendID != nil)
+        controller.render(detail: first)
+        // 与渲染任务共用串行队列，确认旧任务和它的主线程回调都已获得执行机会。
+        await withCheckedContinuation { continuation in
+            controller.renderQueue.async {
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
+        #expect(controller.comments.isEmpty)
+        #expect(controller.pendingCommentAppendID == nil)
+        #expect(controller.commentRenderedCache["stale"] == nil)
+    }
+
     @Test func postHeaderKeepsAuthorBadgesThroughReactionUpdates() {
         let detail = PostDetail(
             id: "956253", title: "标签测试", authorName: "Neutralize",
@@ -347,6 +402,7 @@ struct PostDetailViewControllerTests {
                 nextPage: nil
             )
         ))
+        #expect(await waitUntil { viewController.pendingCommentAppendID == nil })
 
         #expect(viewController.testRowCount(inSection: 0) == 4)
         #expect(viewController.comments.map(\.id) == ["1", "2"])
@@ -432,6 +488,7 @@ struct PostDetailViewControllerTests {
                 nextPage: nil
             )
         ))
+        #expect(await waitUntil { viewController.pendingCommentAppendID == nil })
 
         viewController.refreshCurrentCommentPage(detail: PostDetail(
             id: "703863",
@@ -932,6 +989,7 @@ struct PostDetailViewControllerTests {
             ],
             page: 3
         ))
+        #expect(await waitUntil { viewController.pendingCommentAppendID == nil })
 
         viewController.copyCurrentPostLink()
 
@@ -979,6 +1037,7 @@ struct PostDetailViewControllerTests {
             ],
             page: 3
         ))
+        #expect(await waitUntil { viewController.pendingCommentAppendID == nil })
 
         viewController.openInBrowserTapped()
 
@@ -1530,7 +1589,7 @@ struct PostDetailViewControllerTests {
 
         #expect(didRefresh)
         #expect(node.debugAuthorAttributedTitle?.string == "ipv4")
-        #expect((node.debugAuthorAttributedTitle?.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)?.pointSize == AppTextSizeSettings.adjustedPointSize(basePointSize: 17))
+        #expect((node.debugAuthorAttributedTitle?.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)?.pointSize == AppTypography.listTitleFont().pointSize)
         #expect((node.debugAuthorAttributedTitle?.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
     }
 
@@ -2640,6 +2699,13 @@ struct PostDetailViewControllerTests {
 
         #expect(didUpdate)
         #expect(updatedHeight > initialHeight)
+        let stableLayout = node.layoutThatFits(constrainedSize)
+        _ = node.updateAttachmentLayout(
+            matching: imageURL,
+            originalSize: CGSize(width: 1200, height: 800),
+            displaySize: displaySize
+        )
+        #expect(node.layoutThatFits(constrainedSize) === stableLayout)
     }
 
     @Test func richTextNodeUsesCachedAttachmentSizeBeforeImageReloads() throws {

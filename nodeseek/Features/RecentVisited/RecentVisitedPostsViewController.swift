@@ -32,6 +32,9 @@ final class RecentVisitedPostsViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        AvatarRenderScheduler.shared.track(tableView)
+        NotificationCenter.default.addObserver(self, selector: #selector(textSizeDidChange),
+            name: AppTextSizeSettings.didChangeNotification, object: nil)
         view.backgroundColor = .systemBackground
         tableView.backgroundColor = .systemBackground
         tableView.register(RecentVisitedPostCell.self, forCellReuseIdentifier: Self.cellIdentifier)
@@ -52,6 +55,10 @@ final class RecentVisitedPostsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         records.count
     }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func textSizeDidChange() { tableView.reloadData() }
 
     override func tableView(
         _ tableView: UITableView,

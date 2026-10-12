@@ -22,7 +22,17 @@ final class AvatarImageLoader {
 
     private let downloader: ImageDownloader
     private let cookieSession: NodeSeekCookieSessionManaging
+    private let pipeline: AvatarDataPipeline
     private var activeRequestTokens: [ObjectIdentifier: UUID] = [:]
+    private var providers: [ObjectIdentifier: AvatarImageDataProvider] = [:]
+    private final class LoadedAvatar: NSObject {
+        let url: URL
+        weak var image: UIImage?
+        init(url: URL, image: UIImage?) { self.url = url; self.image = image }
+    }
+    private let loadedAvatars = NSMapTable<UIImageView, LoadedAvatar>(
+        keyOptions: .weakMemory, valueOptions: .strongMemory
+    )
 
     convenience init() {
         self.init(cookieSession: NodeSeekCookieSession())
@@ -32,13 +42,15 @@ final class AvatarImageLoader {
         self.init(cookieSession: NodeSeekCookieSession(bridge: cookieBridge))
     }
 
-    init(cookieSession: NodeSeekCookieSessionManaging) {
+    init(cookieSession: NodeSeekCookieSessionManaging, pipeline: AvatarDataPipeline = .shared) {
         self.cookieSession = cookieSession
+        self.pipeline = pipeline
         self.downloader = AvatarImageLoadingOptions.makeDownloader()
     }
 
     func cancel(on imageView: UIImageView) {
         activeRequestTokens.removeValue(forKey: ObjectIdentifier(imageView))
+        providers.removeValue(forKey: ObjectIdentifier(imageView))?.cancel()
         imageView.kf.cancelDownloadTask()
     }
 
@@ -62,10 +74,16 @@ final class AvatarImageLoader {
         avatarURL: URL?,
         completion: Completion? = nil
     ) {
+        if let url = ImageURLResolver.resolve(avatarURL),
+           let loaded = loadedAvatars.object(forKey: imageView), loaded.url == url,
+           let image = loaded.image, image === imageView.image {
+            completion?(.success(url: url, cacheType: .memory))
+            return
+        }
         let requestToken = beginRequest(for: imageView)
-        imageView.image = AvatarPlaceholderImage.image
 
         guard let avatarURL = ImageURLResolver.resolve(avatarURL) else {
+            imageView.image = AvatarPlaceholderImage.image
             logAvatar(.notice, "头像URL缺失或非法 id=\(postID)")
             finishIfCurrent(requestToken, for: imageView)
             return
@@ -88,6 +106,7 @@ final class AvatarImageLoader {
     }
 
     private func beginRequest(for imageView: UIImageView) -> UUID {
+        cancel(on: imageView)
         let viewID = ObjectIdentifier(imageView)
         let requestToken = UUID()
         activeRequestTokens[viewID] = requestToken
@@ -105,12 +124,26 @@ final class AvatarImageLoader {
     ) {
         guard isCurrent(requestToken, for: imageView) else { return }
 
+        let provider = AvatarImageDataProvider(
+            url: avatarURL, size: AvatarImageLoadingOptions.targetSize,
+            scale: imageView.traitCollection.displayScale > 0 ? imageView.traitCollection.displayScale : UIScreen.main.scale,
+            imageView: imageView, pipeline: pipeline
+        )
+        providers[ObjectIdentifier(imageView)] = provider
+        let viewID = ObjectIdentifier(imageView)
         imageView.kf.setImage(
-            with: avatarURL,
+            with: .provider(provider),
             placeholder: AvatarPlaceholderImage.image,
             options: kingfisherOptions,
             completionHandler: { [weak self, weak imageView] result in
-                guard let self, let imageView else { return }
+                guard let self else { return }
+                guard let imageView else {
+                    if self.activeRequestTokens[viewID] == requestToken {
+                        self.activeRequestTokens.removeValue(forKey: viewID)
+                        self.providers.removeValue(forKey: viewID)
+                    }
+                    return
+                }
                 guard self.isCurrent(requestToken, for: imageView) else {
                     self.logAvatar(.debug, "忽略过期头像回调 id=\(postID)")
                     return
@@ -206,6 +239,7 @@ final class AvatarImageLoader {
         cacheType: CacheType,
         completion: Completion?
     ) {
+        loadedAvatars.setObject(LoadedAvatar(url: url, image: imageView.image), forKey: imageView)
         finishIfCurrent(requestToken, for: imageView)
         completion?(.success(url: url, cacheType: cacheType))
     }
@@ -233,5 +267,6 @@ final class AvatarImageLoader {
         let viewID = ObjectIdentifier(imageView)
         guard activeRequestTokens[viewID] == requestToken else { return }
         activeRequestTokens.removeValue(forKey: viewID)
+        providers.removeValue(forKey: viewID)
     }
 }

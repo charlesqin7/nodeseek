@@ -770,6 +770,7 @@ class SettingsViewController: UITableViewController {
 
 final class SettingsTextSizeViewController: UITableViewController {
     private enum Row: Int, CaseIterable {
+        case followsSystem
         case adjustment
         case preview
     }
@@ -799,7 +800,11 @@ final class SettingsTextSizeViewController: UITableViewController {
             SettingsTextSizePreviewCell.self,
             forCellReuseIdentifier: "SettingsTextSizePreviewCell"
         )
+        NotificationCenter.default.addObserver(self, selector: #selector(textSizeDidChange),
+            name: AppTextSizeSettings.didChangeNotification, object: textSizeSettings)
     }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         Row.allCases.count
@@ -807,6 +812,17 @@ final class SettingsTextSizeViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         switch Row(rawValue: indexPath.row) {
+        case .followsSystem:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = "跟随系统"
+            cell.selectionStyle = .none
+            let toggle = UISwitch()
+            toggle.isOn = textSizeSettings.followsSystem
+            toggle.accessibilityIdentifier = "settings-text-size-follows-system"
+            toggle.accessibilityLabel = "跟随系统字号"
+            toggle.addTarget(self, action: #selector(followsSystemChanged(_:)), for: .valueChanged)
+            cell.accessoryView = toggle
+            return cell
         case .adjustment:
             guard let cell = tableView.dequeueReusableCell(
                 withIdentifier: "SettingsTextSizeAdjustmentCell",
@@ -814,7 +830,7 @@ final class SettingsTextSizeViewController: UITableViewController {
             ) as? SettingsTextSizeAdjustmentCell else {
                 return UITableViewCell()
             }
-            cell.configure(pointOffset: textSizeSettings.pointOffset)
+            cell.configure(pointOffset: textSizeSettings.pointOffset, isEnabled: !textSizeSettings.followsSystem)
             cell.onPointOffsetChanged = { [weak self] pointOffset in
                 self?.updateTextSize(pointOffset: pointOffset)
             }
@@ -826,7 +842,7 @@ final class SettingsTextSizeViewController: UITableViewController {
             ) as? SettingsTextSizePreviewCell else {
                 return UITableViewCell()
             }
-            cell.configure(pointOffset: textSizeSettings.pointOffset)
+            cell.configure(configuration: textSizeSettings.configuration)
             return cell
         case .none:
             return UITableViewCell()
@@ -834,10 +850,22 @@ final class SettingsTextSizeViewController: UITableViewController {
     }
 
     private func updateTextSize(pointOffset: CGFloat) {
+        guard !textSizeSettings.followsSystem else { return }
         textSizeSettings.setPointOffset(pointOffset)
+    }
+
+    @objc private func followsSystemChanged(_ sender: UISwitch) {
+        textSizeSettings.setFollowsSystem(sender.isOn)
+    }
+
+    @objc private func textSizeDidChange() {
+        let toggle = tableView.cellForRow(at: IndexPath(row: Row.followsSystem.rawValue, section: 0))?.accessoryView as? UISwitch
+        toggle?.isOn = textSizeSettings.followsSystem
+        let adjustment = tableView.cellForRow(at: IndexPath(row: Row.adjustment.rawValue, section: 0)) as? SettingsTextSizeAdjustmentCell
+        adjustment?.configure(pointOffset: textSizeSettings.pointOffset, isEnabled: !textSizeSettings.followsSystem)
         let previewIndexPath = IndexPath(row: Row.preview.rawValue, section: 0)
         if let previewCell = tableView.cellForRow(at: previewIndexPath) as? SettingsTextSizePreviewCell {
-            previewCell.configure(pointOffset: textSizeSettings.pointOffset)
+            previewCell.configure(configuration: textSizeSettings.configuration)
             UIView.performWithoutAnimation {
                 tableView.beginUpdates()
                 tableView.endUpdates()
