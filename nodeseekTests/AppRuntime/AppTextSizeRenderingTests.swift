@@ -14,7 +14,7 @@ struct AppTextSizeRenderingTests {
     @Test func detailHTMLRendererUsesAppTextSizeForBodyText() throws {
         let configuration = AppTypography.Configuration(followsSystem: false, pointOffset: 2, category: .large)
 
-        let blocks = configuration.performAsCurrent { DTCoreTextHTMLContentRenderer().render(
+        let blocks = try configuration.performAsCurrent { DTCoreTextHTMLContentRenderer().render(
             fragment: "<p>正文预览</p>",
             baseURL: try #require(URL(string: "https://www.nodeseek.com")),
             maxImageWidth: 320

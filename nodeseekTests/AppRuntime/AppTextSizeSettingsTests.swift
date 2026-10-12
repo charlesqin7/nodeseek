@@ -1,3 +1,4 @@
+import AsyncDisplayKit
 import Testing
 import UIKit
 @testable import nodeseek
@@ -94,5 +95,34 @@ struct AppTextSizeSettingsTests {
         #expect(normal.pointSize == preview.debugCommentBodyFont?.pointSize)
         #expect(bold.fontDescriptor.symbolicTraits.contains(.traitBold))
         #expect(preview.debugListTitleFont?.pointSize == configuration.performAsCurrent { AppTypography.listTitleFont().pointSize })
+    }
+
+    @Test func longListTitleAndPreviewGrowAtMaximumAccessibilitySizeInBothThemes() {
+        let post = PostSummary(id: "font-layout", title: String(repeating: "长标题自然换行 ", count: 15),
+            url: URL(string: "https://www.nodeseek.com/post-1")!, authorName: "作者", nodeName: "日常",
+            replyCount: 123, viewCount: 456, lastActivityText: "刚刚")
+        let range = ASSizeRange(min: CGSize(width: 390, height: 0), max: CGSize(width: 390, height: .greatestFiniteMagnitude))
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            var heights: [CGFloat] = []
+            var previewHeights: [CGFloat] = []
+            for category in [UIContentSizeCategory.extraSmall, .large, .accessibilityExtraExtraExtraLarge] {
+                let configuration = AppTypography.Configuration(followsSystem: true, pointOffset: 0, category: category)
+                configuration.performAsCurrent {
+                    traits.performAsCurrent {
+                        let node = PostSummaryCellNode(post: post)
+                        heights.append(node.layoutThatFits(range).size.height)
+                        let preview = SettingsTextSizePreviewCell(style: .default, reuseIdentifier: nil)
+                        preview.configure(configuration: configuration)
+                        preview.contentView.bounds = CGRect(x: 0, y: 0, width: 390, height: 1)
+                        previewHeights.append(preview.contentView.systemLayoutSizeFitting(
+                            CGSize(width: 390, height: UIView.layoutFittingCompressedSize.height),
+                            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height)
+                    }
+                }
+            }
+            #expect(heights[2] > heights[1] && heights[1] >= heights[0])
+            #expect(previewHeights[2] > previewHeights[1])
+        }
     }
 }
