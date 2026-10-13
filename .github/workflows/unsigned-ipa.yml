@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - codex/scroll-performance-ipa
+      - codex/promotion-ipa
 
 permissions:
   contents: read
@@ -92,6 +93,28 @@ jobs:
           ditto -c -k --keepParent Payload ../nodeseek-unsigned.ipa
           cd ..
           shasum -a 256 nodeseek-unsigned.ipa > SHA256SUMS.txt
+      - name: Verify ProMotion in packaged IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import plistlib
+          import zipfile
+          from pathlib import Path
+
+          key = "CADisableMinimumFrameDurationOnPhone"
+          archive_plist = Path("build/nodeseek.xcarchive/Products/Applications/nodeseek.app/Info.plist")
+          with archive_plist.open("rb") as source:
+              archived = plistlib.load(source).get(key)
+          with zipfile.ZipFile("build/nodeseek-unsigned.ipa") as ipa:
+              packaged = plistlib.loads(ipa.read("Payload/nodeseek.app/Info.plist")).get(key)
+          result = {"key": key, "archive": archived, "ipa": packaged}
+          Path("build/promotion-config.json").write_text(json.dumps(result, indent=2) + "\n")
+          print(json.dumps(result))
+          if archived is not True or packaged is not True:
+              raise SystemExit("ProMotion configuration missing from archive or IPA")
+          PY
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
@@ -101,6 +124,7 @@ jobs:
             build/commit.txt
             build/toolchain.txt
             build/SHA256SUMS.txt
+            build/promotion-config.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload build diagnostics
